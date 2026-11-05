@@ -1,0 +1,13 @@
+[project]
+name = "travel-agent"
+version = "0.1.0"
+description = "国内旅行规划：PydanticAI + 高德 MCP + 飞猪 Skill"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-ai-slim[mcp,openai,web]==2.63.0",
+    "pydantic-ai-harness[skills]==0.63.0",
+    "pydantic-settings>=2.12,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]

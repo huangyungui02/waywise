@@ -1,0 +1,182 @@
+"""验证官方组件之间的接线；不访问真实模型或旅游服务。"""
+
+import asyncio
+import json
+
+import httpx2
+import pytest
+from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.toolsets import FunctionToolset
+from starlette.testclient import TestClient
+
+import app
+from settings import Settings
+
+
+@pytest.fixture
+def configured(monkeypatch):
+    monkeypatch.setenv("AMAP_MAPS_API_KEY", "test-key")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
+    monkeypatch.setenv("TRAVEL_MODEL", "qwen3.8-flash")
+    monkeypatch.setenv("PYDANTIC_AI_NO_BANNER", "1")
+
+    class LocalMaps(AbstractCapability):
+        def get_toolset(self):
+            tools = FunctionToolset()
+
+            @tools.tool_plain
+            def amap_route() -> str:
+                return "车站到酒店：公交 30 分钟（测试数据）"
+
+            return tools
+
+    monkeypatch.setattr(app, "MCP", lambda *args, **kwargs: LocalMaps())
+
+
+def test_missing_map_key(monkeypatch):
+    monkeypatch.delenv("AMAP_MAPS_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="AMAP_MAPS_API_KEY"):
+        app.Settings(_env_file=None)
+
+
+def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
+    # 使用本地 CLI 替身，验证完整的 Skill -> 文档 -> Shell 调用链。
+    cli = tmp_path / "flyai"
+    cli.write_text('#!/bin/sh\nprintf \'{"data":{"itemList":[]},"status":0}\\n\'\n')
+    cli.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + ":/usr/bin:/bin")
+    calls = iter([
+        ("load_capability", {"id": "flyai"}),
+        ("read_file", {"path": "flyai/references/search-train.md"}),
+        ("run_command", {"command": "flyai search-train --origin 上海 --destination 杭州 --dep-date 2026-12-01"}),
+        ("amap_route", {}),
+    ])
+
+    def model(messages, info):
+        call = next(calls, None)
+        if call:
+            return ModelResponse(parts=[ToolCallPart(*call)])
+        return ModelResponse(parts=[TextPart("测试完成")])
+
+    agent = app.create_agent()
+    with agent.override(model=FunctionModel(model)):
+        result = agent.run_sync("检查旅行工具链")
+    results = [p for m in result.all_messages() for p in m.parts if isinstance(p, ToolReturnPart)]
+    assert len(results) == 4
+    assert "loaded" in str(results[0].content)
+    assert "FlyAI — Travel" in repr(result.all_messages())
+    assert "--origin" in str(results[1].content)
+    assert '"status":0' in str(results[2].content)
+    assert "30 分钟" in str(results[3].content)
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("read_file", {"path": "../.env"}),
+    ("run_command", {"command": "python --version"}),
+    ("run_command", {"command": "flyai --help; echo unexpected"}),
+])
+def test_tool_constraints(configured, tool, args):
+    requests = 0
+
+    def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            return ModelResponse(parts=[ToolCallPart(tool, args)])
+        assert any(
+            isinstance(p, ToolReturnPart) and p.outcome == "retried"
+            for p in messages[-1].parts
+        )
+        return ModelResponse(parts=[TextPart("已拒绝")])
+
+    agent = app.create_agent()
+    with agent.override(model=FunctionModel(model)):
+        assert agent.run_sync("检查工具限制").output == "已拒绝"
+
+
+def test_official_web_endpoints(configured):
+    with TestClient(app.create_app(), base_url="http://127.0.0.1") as client:
+        assert client.get("/api/health").status_code == 200
+        response = client.get("/api/configure")
+        assert response.status_code == 200
+        assert "models" in response.json()
+
+
+def test_settings_dotenv_and_environment(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "DASHSCOPE_API_KEY=file-secret\nAMAP_MAPS_API_KEY=file-map-key\n"
+        "TRAVEL_MODEL=qwen3.8-flash\nFLYAI_API_KEY=file-flyai-key\n"
+    )
+    for name in ["DASHSCOPE_API_KEY", "AMAP_MAPS_API_KEY", "TRAVEL_MODEL", "FLYAI_API_KEY"]:
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=env_file)
+    assert settings.dashscope_api_key.get_secret_value() == "file-secret"
+    assert settings.flyai_api_key.get_secret_value() == "file-flyai-key"
+    assert "file-secret" not in repr(settings)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "env-secret")
+    assert Settings(_env_file=env_file).dashscope_api_key.get_secret_value() == "env-secret"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_bailian_native_tools_request(configured, monkeypatch, streaming):
+    """真实适配器 + HTTP Mock：原生搜索与函数工具共存，普通/流式响应均可读。"""
+    provider_class = app.AlibabaProvider
+    captured = []
+    message = {
+        "id": "msg_test", "type": "message", "role": "assistant", "status": "completed",
+        "content": [{"type": "output_text", "text": "测试完成", "annotations": []}],
+    }
+    response = {
+        "id": "resp_test", "object": "response", "created_at": 1793836800,
+        "model": "qwen3.8-flash", "status": "completed", "error": None,
+        "output": [message],
+        "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    }
+
+    def respond(request):
+        captured.append(json.loads(request.content))
+        assert str(request.url).endswith("/compatible-mode/v1/responses")
+        assert captured[-1]["stream"] is streaming
+        if not streaming:
+            return httpx2.Response(200, json=response)
+        events = [
+            {"type": "response.created", "response": {**response, "output": [], "status": "in_progress"}},
+            {"type": "response.output_item.added", "output_index": 0,
+             "item": {**message, "content": [], "status": "in_progress"}},
+            {"type": "response.content_part.added", "output_index": 0, "item_id": "msg_test",
+             "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}},
+            {"type": "response.output_text.delta", "output_index": 0, "item_id": "msg_test",
+             "content_index": 0, "delta": "测试完成"},
+            {"type": "response.output_item.done", "output_index": 0, "item": message},
+            {"type": "response.completed", "response": response},
+        ]
+        data = "".join(
+            "data: " + json.dumps({**event, "sequence_number": i}) + "\n\n"
+            for i, event in enumerate(events)
+        )
+        return httpx2.Response(200, text=data, headers={"content-type": "text/event-stream"})
+
+    async def run():
+        async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as client:
+            monkeypatch.setattr(app, "AlibabaProvider", lambda **kwargs: provider_class(
+                **kwargs, http_client=client,
+            ))
+            agent = app.create_agent()
+            if streaming:
+                async with agent.run_stream("测试网页工具配置") as result:
+                    assert await result.get_output() == "测试完成"
+            else:
+                assert (await agent.run("测试网页工具配置")).output == "测试完成"
+
+    asyncio.run(run())
+    body = captured[0]
+    assert body["model"] == "qwen3.8-flash"
+    assert body["reasoning"]["effort"] == "none"
+    assert {t["type"] for t in body["tools"]} == {"web_search", "function"}
+    assert {t["name"] for t in body["tools"] if t["type"] == "function"} >= {
+        "load_capability", "read_file", "run_command", "amap_route",
+    }
+    assert "x-anthropic-billing-header" not in str(body)
