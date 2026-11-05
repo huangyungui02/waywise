@@ -1,14 +1,34 @@
 # 开发约定
 
-- 当前只实现单 Agent，负责需求澄清、工具调用、方案比较和行程整合。
-- 代码尽量保持简洁。优先使用官方文档示例、官方 API 和官方集成写法，而非自己造轮子；先核对已安装版本，再使用对应 API。
-- PydanticAI 官方参考：https://pydantic.dev/docs/ai/llms.txt 。
-- UI 使用官方 `Agent.to_web()`；MCP 使用官方 `MCP` capability；飞猪使用官方 Harness `Skills`、`FileSystem` 和 `Shell` 配合上游 Skill 与 CLI。
-- 不自建前端、Agent 调度器、Skill 加载器、MCP 客户端、会话管理或通用工具抽象。
-- 飞猪 Skill 在 `skills/flyai/`。尽量保留上游内容，更新时记录来源及本地变更。
-- 价格、余票、时刻、酒店与预订链接必须来自真实工具结果；缺失和失败要明确说明，不伪造库存或下单成功。
-- 当前预订以飞猪返回的链接交给用户完成，不新增支付、代下单或存储乘客证件的逻辑。
+## 项目范围
+
+- 保持单 Agent，支持国内单目的城市、直达火车或飞机往返和酒店住宿。
+- 咨询顺序：了解需求与已有预订 → 推荐并选定交通和住宿 → 用户确认、工具校验并保存 → 每日行程规划。修改基础安排后重新确认。
+- 确认采用方案与实际购买分别记录。用户通过真实预订链接自行购买；不实现代下单、支付或乘客证件存储。
+
+## 实现原则
+
+- 保持代码简洁，优先官方示例、API 和集成，避免重复实现框架已有能力。使用前核对已安装版本；[PydanticAI 官方参考](https://pydantic.dev/docs/ai/llms.txt)。
+- 使用官方 `Agent.to_web()`、`MCP` capability，以及 Harness `Skills`、`FileSystem`、`Shell`；飞猪查询通过上游 Skill 和 CLI 完成。
+- 不自建前端、Agent 调度器、Skill 加载器、MCP 客户端、会话管理框架或通用工具抽象。
+- 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，关闭思考，使用官方 `WebSearch` capability 启用原生搜索。
+- 时间等动态信息通过工具按需获取，避免注入不断变化的系统指令。
+- `skills/flyai/` 尽量保留上游内容；更新时在 `skills/UPSTREAM.md` 记录来源与本地变更，不为调整措辞改写上游 Skill 或官方工具描述。
+
+## 提示词与工具
+
+- 系统指令、工具描述和参数说明应自然连贯，符合真实旅行咨询流程。先明确需求，再确定交通和住宿；已知信息不重复询问。
+- 系统指令描述整体流程和信息边界；工具描述说明用途、调用时机、所需信息及结果如何影响下一步，避免重复堆砌限制。
+- 工具调用自然衔接用户当前的决定，面向用户的回复聚焦旅行安排，不暴露内部状态、参数或执行步骤。
+- 价格、库存、时刻和预订链接以真实查询结果为依据，已有预订可依据用户提供的信息。缺失和失败要明确说明，不编造数据或宣称购买成功。
+
+## 配置与凭据
+
+- 环境配置统一使用 Pydantic Settings，凭据使用 `SecretStr`，不直接调用 `os.getenv` 或 `load_dotenv`。
 - 密钥只放环境变量或本地 `.env`，不得写入代码、文档示例、测试快照或日志。
-- 环境配置统一使用 Pydantic Settings；凭据使用 SecretStr，不直接调用 os.getenv 或 load_dotenv。
-- 默认模型为百炼 qwen3.8-flash，通过官方 OpenAIResponsesModel/AlibabaProvider 接入，使用官方 WebSearch capability 启用百炼原生联网搜索。
-- 测试使用官方 `FunctionModel` / `TestModel` 和本地替身，默认不访问真实模型、地图或飞猪服务。
+
+## 文档与验证
+
+- README 面向首次接触项目的开源用户，优先说明用途、环境准备、安装配置、启动、使用示例和实际限制，确保命令与配置可照做。
+- README 只保留简短开发入口；架构、框架 API 和内部状态等必要细节放在对应代码或单独文档，不加入调试过程和本次开发记录。
+- 测试使用官方 `FunctionModel` / `TestModel` 和本地替身，默认不访问真实模型、地图或飞猪服务。运行 `uv run python -m pytest -q`，区分离线验证与真实服务联调结果。

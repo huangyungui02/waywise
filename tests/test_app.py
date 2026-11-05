@@ -7,7 +7,7 @@ import httpx2
 import pytest
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
-from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai.toolsets import FunctionToolset
 from starlette.testclient import TestClient
 
@@ -104,6 +104,33 @@ def test_official_web_endpoints(configured):
         assert "models" in response.json()
 
 
+def test_web_allows_more_than_50_model_requests(configured):
+    requests = 0
+
+    async def stream_model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests <= 50:
+            yield {0: DeltaToolCall(name="current_time", json_args="{}", tool_call_id=f"call-{requests}")}
+        else:
+            yield "超过50次请求后正常完成"
+
+    agent = app.create_agent()
+    from trip import TripStore
+
+    with agent.override(model=FunctionModel(stream_function=stream_model)):
+        with TestClient(agent.to_web(deps=TripStore()), base_url="http://127.0.0.1") as client:
+            response = client.post("/api/chat", json={
+                "id": "limit-test",
+                "trigger": "submit-message",
+                "messages": [{"id": "user-1", "role": "user",
+                              "parts": [{"type": "text", "text": "测试请求上限"}]}],
+            })
+    assert response.status_code == 200
+    assert "超过50次请求后正常完成" in response.text
+    assert requests == 51
+
+
 def test_settings_dotenv_and_environment(monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -178,5 +205,7 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     assert {t["type"] for t in body["tools"]} == {"web_search", "function"}
     assert {t["name"] for t in body["tools"] if t["type"] == "function"} >= {
         "load_capability", "read_file", "run_command", "amap_route",
+        "current_time", "confirm_trip",
     }
+    assert "confirmed_trip" not in {t.get("name") for t in body["tools"]}
     assert "x-anthropic-billing-header" not in str(body)

@@ -1,27 +1,21 @@
 # 国内旅行 Agent
 
-使用 **一个 PydanticAI Agent** 完成需求澄清、往返车票与酒店查询、路线核验、逐日行程及预算比较。
-直接运行官方 Web Chat UI，不自建前端和编排框架。
+一个可以在浏览器里聊天的国内旅行助手，帮你查询往返火车票、机票和酒店，提供购买链接，并安排每日游览路线和预算。
 
-```mermaid
-flowchart LR
-    U[用户] <--> W[官方 Web Chat UI]
-    W <--> A[单个 PydanticAI Agent]
-    A <--> M[官方 MCP capability → 高德]
-    A <--> B[百炼 qwen3.8-flash → 内置 web_search]
-    A <--> S[官方 Harness Skills → 飞猪 SKILL.md]
-    A <--> F[官方 FileSystem → 飞猪命令参考]
-    A <--> C[官方 Shell → flyai CLI → 飞猪服务]
-    A --> R[往返车票 / 酒店预订链接 / 逐日路线 / 预算]
-```
+先聊清楚需求，再选定交通和住宿；你确认方案后，助手再安排具体行程。已经订好的车票和酒店也可以直接告诉它。
 
-Skill 是旅行领域说明与操作流程；真正执行查询的是官方 CLI。
-`Skills` 负责按需加载，`FileSystem` 负责读取配套命令参考，`Shell` 负责执行 `flyai`。
-这几个组件属于同一 Agent，没有子 Agent。
+目前支持 **单个目的城市、直达往返、酒店住宿**，去程和回程可以使用不同交通方式。
 
-## 启动
+## 准备环境
 
-需要 Python 3.12+、uv 和 Node.js。推荐在项目根目录运行：
+- Python 3.12 或以上版本
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Node.js 和 npm，用于安装飞猪命令行工具
+- 百炼 API Key 和高德 Web 服务 Key
+
+## 安装
+
+下载或克隆本仓库，进入项目根目录，执行：
 
 ```bash
 uv sync
@@ -29,82 +23,71 @@ npm install -g @fly-ai/flyai-cli
 cp .env.example .env
 ```
 
-在 `.env` 填写 `AMAP_MAPS_API_KEY` 和 `DASHSCOPE_API_KEY`。
-默认模型为百炼 **`qwen3.8-flash`**，`TRAVEL_MODEL` 直接填写百炼模型 ID。
-通过官方 `OpenAIResponsesModel` / `AlibabaProvider` 连接百炼 OpenAI Responses 兼容接口，
-通过官方 `WebSearch()` capability 启用百炼内置 `web_search`，与高德、飞猪工具一起使用。
-通过 `OpenAIResponsesModelSettings(openai_reasoning_effort="none")` 关闭思考模式。
-`DASHSCOPE_BASE_URL` 默认为北京按量计费兼容地址
-`https://dashscope.aliyuncs.com/compatible-mode/v1`；使用业务空间端点时改为控制台对应的
-`https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。
-地域、端点和 Key 需要配套。
+## 配置
 
-`settings.py` 使用官方 Pydantic Settings：环境变量优先于项目根目录的 `.env`，
-所有凭据使用 `SecretStr`，不再通过 `load_dotenv` 修改进程环境。
-高德 Key 需要在开放平台申请 **Web 服务** 类型。
-飞猪可试用，正式使用可配置 `FLYAI_API_KEY`；CLI 也支持本机已有配置。
+编辑项目根目录的 `.env`：
+
+```dotenv
+DASHSCOPE_API_KEY=你的百炼APIKey
+AMAP_MAPS_API_KEY=你的高德Web服务Key
+```
+
+| 配置项 | 是否必填 | 说明 |
+| --- | --- | --- |
+| `DASHSCOPE_API_KEY` | 是 | [百炼 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
+| `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 **Web 服务** 类型 Key |
+| `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
+| `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，更换时需支持 Responses 接口、内置搜索和工具调用 |
+| `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
+
+已有飞猪 CLI 本机配置时可以继续使用。环境变量优先于 `.env`；请勿提交包含密钥的 `.env`。
+模型、搜索及其他服务的费用与额度以各服务提供方为准。
+
+## 启动
+
+在项目根目录运行：
 
 ```bash
 uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
 ```
 
-打开 **http://127.0.0.1:7932**。
-官方 UI 首次访问会从 CDN 获取页面资源，需要能够访问 CDN。
-这里使用的是本地开发 UI；面向公众部署时需另行接入身份验证与会话存储。
+在浏览器打开 **http://127.0.0.1:7932**，即可开始聊天。停止服务时在终端按 `Ctrl+C`。
 
-示例输入：
+页面首次加载需要访问 CDN。如果页面无法打开，先检查终端是否启动成功，以及浏览器能否加载页面资源。
 
-> 帮我规划 2026 年 12 月 4 日到 6 日从上海去杭州的旅行，2 个成人，
-> 总预算 3000 元，往返高铁二等座，一间双床房，想去西湖和灵隐，节奏轻松一点。
-> 给我去回车票、酒店预订链接和每天的路线。
+## 如何使用
 
-## 规划过程
+可以从一次完整需求开始：
 
-1. 提取出发地、目的地、日期、人数、预算与偏好，集中询问必要的缺失信息。
-2. 加载飞猪 Skill、读取命令文档，分别查询去程与回程，查询实际入住日期的酒店。
-3. 用高德核对酒店、车站、景点位置及交通耗时，按地理位置与到离站时间安排每日路线。
-   用百炼内置搜索补充官方开放时间、预约政策和近期公告，附来源链接。
-4. 给出有依据的候选、预订链接、逐日安排和预算，区分实时报价与估算。
-5. 用户修改需求后，重新查询受影响的商品和路线。
+> 想下个月找个周末，从上海去杭州玩三天，两个人，总预算 3000 元，坐高铁，
+> 想去西湖和灵隐，住宿交通方便一点。车票和酒店都还没订，帮我推荐一下。
 
-预订由用户通过工具返回的飞猪链接完成；当前版本不代下单、锁票或支付。
-没有价格、余票、房型或退改信息时明确标注待核实。工具失败时说明未完成的部分，
-不编造报价和链接。行程约束目前由 Agent 指令执行，尚无独立求解器或预算校验器。
+也可以告诉助手已有的安排：
 
-## 文件
+> 我已经订好了去重庆的机票和酒店，想请你安排三天行程，回程还没买。
 
-| 文件 | 用途 |
-| --- | --- |
-| `app.py` | 创建 Agent 与官方 Web 应用 |
-| `settings.py` | 用 Pydantic Settings 读取、校验环境配置 |
-| `instructions.md` | 需求澄清、工具使用、路线和预算规则 |
-| `skills/flyai/` | 飞猪上游 Skill、命令参考和许可 |
-| `skills/UPSTREAM.md` | 飞猪 Skill 来源记录 |
-| `AGENTS.md` | 开发约定，包含优先使用官方集成 |
-| `tests/test_app.py` | 离线工具链与 Web 接口验证 |
+助手会补充询问必要信息，推荐未订的往返交通和酒店，并提供购买链接。
+你选定后，它会汇总完整安排供你确认；确认并检查通过后，再生成每日路线和预算。
+后续想换车次、航班或酒店，直接告诉助手，调整后重新确认即可。
+
+确认方案只表示同意按此规划，**不代表已经购买**。购票和订房需要你通过提供的链接前往预订页面完成。
+
+## 当前限制
+
+- 暂不支持中转、多目的城市或非酒店住宿；凌晨入住等特殊安排需额外核对。
+- 价格、余票、房态和退改规则以预订页面为准，售票期外可能无法查询。
+- 确认的旅行安排保存在服务内存中，重启后会清空，重要安排请自行留存。
+- 当前提供本地聊天界面，尚未提供适合公开部署的登录和持久化能力。
+
+## 参与开发
+
+项目基于 [PydanticAI](https://pydantic.dev/docs/ai/llms.txt)，接入高德地图与[飞猪 Skill](https://github.com/alibaba-flyai/flyai-skill)。
+开发前请阅读 [AGENTS.md](AGENTS.md)，飞猪上游文件来源见 [skills/UPSTREAM.md](skills/UPSTREAM.md)。
+
+运行离线测试：
 
 ```bash
 uv run python -m pytest -q
 ```
 
-测试使用官方 `FunctionModel`、本地地图/CLI 替身，验证 Skill 加载、文档读取、
-命令调用和工具限制，以及官方 Web 健康检查与配置接口。
-另有配置优先级测试和 HTTP Mock 测试，验证真实模型适配器发送 `qwen3.8-flash`、
-`web_search`，以及与本地 function tools 共存、普通响应和流式响应解析。
-这些测试不证明真实服务可用，也不评估模型生成行程的质量；配置真实密钥后应再验证完整查询。
-
-本次环境通过已有依赖缓存离线安装并验证，未执行真实旅游商品或地图查询。
-
-## 官方参考
-
-- [PydanticAI 文档入口](https://pydantic.dev/docs/ai/llms.txt)
-- [官方 Web UI](https://pydantic.dev/docs/ai/integrations/web/)
-- [官方 MCP capability](https://pydantic.dev/docs/ai/capabilities/mcp/)
-- [官方 Skills](https://pydantic.dev/docs/ai/harness/skills/)
-- [官方 Shell](https://pydantic.dev/docs/ai/harness/shell/)
-- [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
-- [百炼联网搜索](https://help.aliyun.com/zh/model-studio/web-search)
-- [百炼 OpenAI Responses 接口](https://help.aliyun.com/en/model-studio/compatibility-with-openai-responses-api)
-- [高德 MCP 接入](https://developer.amap.com/api/mcp-server/gettingstarted)
-- [飞猪官方 Skill](https://github.com/alibaba-flyai/flyai-skill)
-- [飞猪平台快速开始](https://flyai.open.fliggy.com/docs/quickstart)
+测试不调用真实模型或旅游服务；实际使用需要配置凭据并验证服务可用性。
