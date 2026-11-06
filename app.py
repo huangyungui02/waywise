@@ -1,9 +1,11 @@
 """FastAPI 会话接口，使用官方存储和 Vercel AI 流协议。"""
 
 from dataclasses import asdict, replace
+from typing import Any, cast
 from uuid import uuid4
 
 import anyio
+import logfire
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,6 +39,26 @@ def create_app(
     agent = agent or create_agent(settings)
     busy: set[str] = set()
     api = FastAPI(title="国内旅行助手")
+    if token := settings.logfire_token.get_secret_value():
+        telemetry = logfire.configure(
+            local=True,
+            token=token,
+            send_to_logfire=True,
+            service_name="travel-agent",
+            environment=settings.logfire_environment,
+            console=False,
+        )
+        telemetry.instrument_pydantic_ai(
+            cast(Agent[Any, str], agent),
+            include_content=settings.logfire_include_content,
+            include_binary_content=False,
+        )
+        telemetry.instrument_fastapi(
+            api,
+            capture_headers=False,
+            request_attributes_mapper=lambda request, attributes: None,
+            excluded_urls=r"/api/health$|/assets/.*",
+        )
 
     async def load(conversation_id: str):
         try:

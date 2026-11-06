@@ -25,3 +25,6 @@ class Settings(BaseSettings):
         validation_alias="AMAP_MAPS_API_KEY", min_length=1
     )
     flyai_api_key: SecretStr = SecretStr("")
+    logfire_token: SecretStr = SecretStr("")
+    logfire_environment: str = "development"
+    logfire_include_content: bool = False

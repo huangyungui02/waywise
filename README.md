@@ -79,6 +79,24 @@ docker compose start travel-agent
 迁移前先备份原数据库和容器数据；复制时两端服务都应停止。
 默认只绑定本机地址，当前没有用户登录与多用户隔离。
 
+## 可观测性（Logfire）
+
+可选接入 [Logfire](https://pydantic.dev/docs/ai/integrations/logfire/)，查看 API 请求、
+Agent 运行、模型调用和工具调用（包括 `call_flyai`）的链路、耗时、异常和 Token 用量。
+在 Logfire 创建项目并取得 **Write Token**，将其填入本地 `.env` 的 `LOGFIRE_TOKEN`，
+再执行 `docker compose up -d --build`。发送一条旅行咨询后，在对应项目查看 `travel-agent` 服务。
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `LOGFIRE_TOKEN` | 空 | 留空不启用 Logfire；凭据只通过运行时环境传入 |
+| `LOGFIRE_ENVIRONMENT` | `development` | 区分环境；`.env.example` 为 Docker 部署设为 `production` |
+| `LOGFIRE_INCLUDE_CONTENT` | `false` | 设为 `true` 后采集对话、模型回复、工具参数和结果 |
+
+默认不采集对话和工具正文、二进制内容、HTTP 请求头与 FastAPI 解析后的请求参数，
+健康检查和静态资源请求也不记录。开启正文采集后，旅行安排等信息会发送到 Logfire，
+请按实际排查需要配置。飞猪 CLI 内部没有单独埋点，链路显示整个 `call_flyai` 调用。
+SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储。
+
 ## 如何使用
 
 可以从一次完整需求开始：
