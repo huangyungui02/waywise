@@ -53,6 +53,13 @@ metadata:
 Use `flyai-cli` to call Fliggy MCP services for travel search and booking scenarios.  
 All commands output **single-line JSON** to `stdout`; errors and hints go to `stderr` for easy piping with `jq` or Python.
 
+## Local execution
+
+In this application, execute CLI commands through `call_flyai(args=[...])`,
+passing the subcommand and arguments without the leading `flyai`.
+Only query and help commands are available; installation and configuration are
+completed by the user outside the conversation. Use `current_time` for the current date.
+
 ## Quick Start
 
 1. **Install CLI**：`npm i -g @fly-ai/flyai-cli`

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import subprocess
 
 import httpx2
 import pytest
@@ -42,7 +43,7 @@ def test_missing_map_key(monkeypatch):
 
 
 def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
-    # 使用本地 CLI 替身，验证完整的 Skill -> 文档 -> Shell 调用链。
+    # 使用本地 CLI 替身，验证完整的 Skill -> 文档 -> call_flyai 调用链。
     cli = tmp_path / "flyai"
     cli.write_text('#!/bin/sh\nprintf \'{"data":{"itemList":[]},"status":0}\\n\'\n')
     cli.chmod(0o755)
@@ -52,9 +53,17 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
             ("load_capability", {"id": "flyai"}),
             ("read_file", {"path": "flyai/references/search-train.md"}),
             (
-                "run_command",
+                "call_flyai",
                 {
-                    "command": "flyai search-train --origin 上海 --destination 杭州 --dep-date 2026-12-01"
+                    "args": [
+                        "search-train",
+                        "--origin",
+                        "上海",
+                        "--destination",
+                        "杭州",
+                        "--dep-date",
+                        "2026-12-01",
+                    ]
                 },
             ),
             ("amap_route", {}),
@@ -88,8 +97,8 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
     "tool,args",
     [
         ("read_file", {"path": "../.env"}),
-        ("run_command", {"command": "python --version"}),
-        ("run_command", {"command": "flyai --help; echo unexpected"}),
+        ("call_flyai", {"args": ["config", "set", "FLYAI_API_KEY", "unexpected"]}),
+        ("call_flyai", {"args": []}),
     ],
 )
 def test_tool_constraints(configured, tool, args):
@@ -109,6 +118,54 @@ def test_tool_constraints(configured, tool, args):
     agent = app.create_agent()
     with agent.override(model=FunctionModel(model)):
         assert agent.run_sync("检查工具限制").output == "已拒绝"
+
+
+@pytest.mark.parametrize("outcome", ["failure", "timeout", "missing"])
+def test_flyai_execution_errors(configured, monkeypatch, outcome):
+    def execute(command, **kwargs):
+        assert command == ["flyai", "search-hotel", "--query", "杭州; echo unexpected"]
+        assert kwargs["timeout"] == 60
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(command, 60)
+        if outcome == "missing":
+            raise FileNotFoundError("flyai")
+        return subprocess.CompletedProcess(command, 2, "原始输出", "查询失败")
+
+    monkeypatch.setattr(app.subprocess, "run", execute)
+    requests = 0
+
+    def model(messages, info):
+        nonlocal requests
+        requests += 1
+        assert "run_command" not in {tool.name for tool in info.function_tools}
+        if requests == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "call_flyai",
+                        {"args": ["search-hotel", "--query", "杭州; echo unexpected"]},
+                    )
+                ]
+            )
+        result = next(
+            part.content
+            for part in messages[-1].parts
+            if isinstance(part, ToolReturnPart)
+        )
+        if outcome == "failure":
+            assert result == {
+                "returncode": 2,
+                "stdout": "原始输出",
+                "stderr": "查询失败",
+            }
+        else:
+            assert result["returncode"] is None
+            assert result["stderr"]
+        return ModelResponse(parts=[TextPart("已说明查询失败")])
+
+    agent = app.create_agent()
+    with agent.override(model=FunctionModel(model)):
+        assert agent.run_sync("查询酒店").output == "已说明查询失败"
 
 
 def test_web_endpoints(configured, tmp_path):
@@ -280,7 +337,7 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     assert {t["name"] for t in body["tools"] if t["type"] == "function"} >= {
         "load_capability",
         "read_file",
-        "run_command",
+        "call_flyai",
         "amap_route",
         "current_time",
         "confirm_trip",

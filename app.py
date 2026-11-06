@@ -1,14 +1,16 @@
 """旅行 Agent：使用 PydanticAI 官方工具集成。"""
 
+import os
+import subprocess
 from datetime import datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.alibaba import AlibabaProvider
-from pydantic_ai_harness import FileSystem, Shell, Skills
+from pydantic_ai_harness import FileSystem, Skills
 
 from settings import ROOT, Settings
 from trip import Trip, TripStore
@@ -42,29 +44,62 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
             LocalWorkspace(ROOT / "skills"),
             Skills(".", include=["flyai"]),
             FileSystem(read_only=True, tools=["read_file"]),
-            Shell(
-                allowed_commands=["flyai"],
-                denied_operators=[
-                    ";",
-                    "&&",
-                    "||",
-                    "|",
-                    ">",
-                    ">>",
-                    "<",
-                    "&",
-                    "`",
-                    "$(",
-                    "\n",
-                ],
-                tools=["run_command"],
-                default_timeout=60,
-                env={"FLYAI_API_KEY": settings.flyai_api_key.get_secret_value()}
-                if settings.flyai_api_key.get_secret_value()
-                else None,
-            ),
         ],
     )
+
+    @agent.tool_plain
+    def call_flyai(args: list[str]) -> dict:
+        """根据飞猪 Skill 执行旅行查询，返回退出码、原始标准输出和标准错误。
+
+        先加载 flyai Skill 并阅读对应命令参考。args 填写子命令及各个参数，
+        不包含 flyai 可执行文件名，例如 ["search-train", "--origin", "上海",
+        "--destination", "杭州", "--dep-date", "2026-12-01"]。
+        需要核对用法时传入 --help。查询失败或结果缺失时据实说明。
+        """
+        commands = {
+            "keyword-search",
+            "ai-search",
+            "search-flight",
+            "search-hotel",
+            "search-train",
+            "search-poi",
+            "search-marriott-hotel",
+            "search-marriott-package",
+            "--help",
+        }
+        if not args or args[0] not in commands:
+            raise ModelRetry(
+                "请按飞猪 Skill 传入查询子命令及参数，或使用 --help 查看帮助。"
+            )
+        env = os.environ.copy()
+        if key := settings.flyai_api_key.get_secret_value():
+            env["FLYAI_API_KEY"] = key
+        try:
+            result = subprocess.run(
+                ["flyai", *args],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=env,
+                cwd=ROOT / "skills",
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "returncode": None,
+                "stdout": "",
+                "stderr": "飞猪查询超过 60 秒，尚未取得结果。",
+            }
+        except FileNotFoundError:
+            return {
+                "returncode": None,
+                "stdout": "",
+                "stderr": "未找到 flyai CLI，请先安装 @fly-ai/flyai-cli。",
+            }
+        return {
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
 
     @agent.tool_plain
     def current_time() -> str:
