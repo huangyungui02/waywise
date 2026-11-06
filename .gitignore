@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 .pydantic-ai-harness/
 node_modules/
+data/
+frontend/dist/
+*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/

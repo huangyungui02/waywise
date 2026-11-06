@@ -9,8 +9,10 @@
 ## 实现原则
 
 - 保持代码简洁，优先官方示例、API 和集成，避免重复实现框架已有能力。使用前核对已安装版本；[PydanticAI 官方参考](https://pydantic.dev/docs/ai/llms.txt)。
-- 使用官方 `Agent.to_web()`、`MCP` capability，以及 Harness `Skills`、`FileSystem`、`Shell`；飞猪查询通过上游 Skill 和 CLI 完成。
-- 不自建前端、Agent 调度器、Skill 加载器、MCP 客户端、会话管理框架或通用工具抽象。
+- 前端使用 React + TypeScript + Vite，React Router 负责客户端路由；聊天使用官方 AI SDK，不自行实现流协议。后端使用 FastAPI 与官方 `VercelAIAdapter`，方便后续 Tauri 客户端复用 API。
+- 历史由后端 SQLite 管理，使用官方 `StepPersistence` / `SqliteStepStore` 保存步骤、`SqliteConversationStore` 保存会话，已确认的 Trip 同库保存；浏览器提交的历史不能替代服务端记录。
+- MCP 使用官方 `MCP` capability；飞猪查询使用 Harness `Skills`、`FileSystem`、`Shell` 配合上游 Skill 和 CLI。
+- 不自建 Agent 调度器、Skill 加载器、MCP 客户端、checkpoint 框架或通用工具抽象。
 - 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，关闭思考，使用官方 `WebSearch` capability 启用原生搜索。
 - 时间等动态信息通过工具按需获取，避免注入不断变化的系统指令。
 - `skills/flyai/` 尽量保留上游内容；更新时在 `skills/UPSTREAM.md` 记录来源与本地变更，不为调整措辞改写上游 Skill 或官方工具描述。
@@ -29,6 +31,7 @@
 
 ## 文档与验证
 
+- 修改 Python 代码后运行 `uv check --fix` 和 `uv format`，处理剩余检查问题，再运行相关测试。前端修改运行 `npm --prefix frontend run build`，涉及交互时运行浏览器测试。
 - README 面向首次接触项目的开源用户，优先说明用途、环境准备、安装配置、启动、使用示例和实际限制，确保命令与配置可照做。
 - README 只保留简短开发入口；架构、框架 API 和内部状态等必要细节放在对应代码或单独文档，不加入调试过程和本次开发记录。
 - 测试使用官方 `FunctionModel` / `TestModel` 和本地替身，默认不访问真实模型、地图或飞猪服务。运行 `uv run python -m pytest -q`，区分离线验证与真实服务联调结果。

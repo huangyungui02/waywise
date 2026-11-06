@@ -10,11 +10,18 @@ ROOT = Path(__file__).resolve().parent
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=ROOT / ".env", env_file_encoding="utf-8", extra="ignore",
+        env_file=ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
+    database_path: Path = ROOT / "data" / "travel.db"
     travel_model: str = "qwen3.8-flash"
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_api_key: SecretStr = Field(validation_alias="DASHSCOPE_API_KEY", min_length=1)
-    amap_maps_api_key: SecretStr = Field(validation_alias="AMAP_MAPS_API_KEY", min_length=1)
+    dashscope_api_key: SecretStr = Field(
+        validation_alias="DASHSCOPE_API_KEY", min_length=1
+    )
+    amap_maps_api_key: SecretStr = Field(
+        validation_alias="AMAP_MAPS_API_KEY", min_length=1
+    )
     flyai_api_key: SecretStr = SecretStr("")

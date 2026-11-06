@@ -16,21 +16,38 @@ from test_app import configured  # noqa: F401
 def itinerary():
     return {
         "outbound": {
-            "type": "train", "number": "G123", "departure_city": "上海", "arrival_city": "杭州",
-            "departure_station": "上海虹桥", "arrival_station": "杭州东",
-            "departure_time": "2026-12-04T09:00:00", "arrival_time": "2026-12-04T10:00:00",
-            "purchase_url": "https://example.com/train", "purchased": False,
+            "type": "train",
+            "number": "G123",
+            "departure_city": "上海",
+            "arrival_city": "杭州",
+            "departure_station": "上海虹桥",
+            "arrival_station": "杭州东",
+            "departure_time": "2026-12-04T09:00:00",
+            "arrival_time": "2026-12-04T10:00:00",
+            "purchase_url": "https://example.com/train",
+            "purchased": False,
         },
         "inbound": {
-            "type": "flight", "number": "MU1234", "departure_city": "杭州", "arrival_city": "上海",
-            "departure_station": "杭州萧山机场", "arrival_station": "上海虹桥机场",
-            "departure_time": "2026-12-06T18:00:00", "arrival_time": "2026-12-06T19:00:00",
+            "type": "flight",
+            "number": "MU1234",
+            "departure_city": "杭州",
+            "arrival_city": "上海",
+            "departure_station": "杭州萧山机场",
+            "arrival_station": "上海虹桥机场",
+            "departure_time": "2026-12-06T18:00:00",
+            "arrival_time": "2026-12-06T19:00:00",
             "purchased": True,
         },
-        "stays": [{
-            "hotel": "测试酒店", "city": "杭州", "address": "测试地址",
-            "check_in": "2026-12-04", "check_out": "2026-12-06", "booked": True,
-        }],
+        "stays": [
+            {
+                "hotel": "测试酒店",
+                "city": "杭州",
+                "address": "测试地址",
+                "check_in": "2026-12-04",
+                "check_out": "2026-12-06",
+                "booked": True,
+            }
+        ],
     }
 
 
@@ -42,16 +59,22 @@ def test_valid_trip_and_day_trip(itinerary):
     assert Trip.model_validate(itinerary).issues() == []
 
 
-@pytest.mark.parametrize("change,expected", [
-    (lambda t: t["inbound"].update(departure_time="2026-12-04T08:00:00"), "依次递增"),
-    (lambda t: t["inbound"].update(arrival_city="北京"), "方向"),
-    (lambda t: t["outbound"].update(purchase_url=None), "购买链接"),
-    (lambda t: t["stays"][0].update(city="北京"), "目的城市"),
-    (lambda t: t["stays"][0].update(check_out="2026-12-05"), "2026-12-05"),
-    (lambda t: t["stays"].append(deepcopy(t["stays"][0])), "重复"),
-    (lambda t: t["stays"][0].update(check_out="2026-12-03"), "退房"),
-    (lambda t: t["stays"][0].update(booked=False), "购买链接"),
-])
+@pytest.mark.parametrize(
+    "change,expected",
+    [
+        (
+            lambda t: t["inbound"].update(departure_time="2026-12-04T08:00:00"),
+            "依次递增",
+        ),
+        (lambda t: t["inbound"].update(arrival_city="北京"), "方向"),
+        (lambda t: t["outbound"].update(purchase_url=None), "购买链接"),
+        (lambda t: t["stays"][0].update(city="北京"), "目的城市"),
+        (lambda t: t["stays"][0].update(check_out="2026-12-05"), "2026-12-05"),
+        (lambda t: t["stays"].append(deepcopy(t["stays"][0])), "重复"),
+        (lambda t: t["stays"][0].update(check_out="2026-12-03"), "退房"),
+        (lambda t: t["stays"][0].update(booked=False), "购买链接"),
+    ],
+)
 def test_invalid_trip(itinerary, change, expected):
     change(itinerary)
     assert expected in " ".join(Trip.model_validate(itinerary).issues())
@@ -99,7 +122,13 @@ def test_time_is_a_tool(configured):
         result = agent.run_sync("现在是北京时间几点？")
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
-    returns = [p for m in result.all_messages() for p in m.parts if isinstance(p, ToolReturnPart)]
+    returns = [
+        p
+        for m in result.all_messages()
+        for p in m.parts
+        if isinstance(p, ToolReturnPart)
+    ]
+    assert isinstance(returns[0].content, str)
     assert "当前北京时间" in returns[0].content
     for message in result.all_messages():
         if isinstance(message, ModelRequest):

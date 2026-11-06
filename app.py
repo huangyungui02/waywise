@@ -1,11 +1,11 @@
-"""单 Agent，直接使用 PydanticAI 官方 Web UI 和集成。"""
+"""旅行 Agent：使用 PydanticAI 官方工具集成。"""
 
 from datetime import datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.capabilities import MCP, Hooks, LocalWorkspace, WebSearch
+from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Shell, Skills
@@ -14,16 +14,8 @@ from settings import ROOT, Settings
 from trip import Trip, TripStore
 
 
-def create_agent(settings: Settings | None = None) -> Agent:
+def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
     settings = settings or Settings()
-    hooks = Hooks()
-
-    @hooks.on.run
-    async def unlimited_requests(ctx: RunContext[TripStore], *, handler):
-        # to_web() 未暴露 usage_limits，通过官方运行钩子取消默认的 50 次请求上限。
-        ctx.usage_limits.request_limit = None
-        return await handler()
-
     agent = Agent(
         OpenAIResponsesModel(
             settings.travel_model,
@@ -37,21 +29,39 @@ def create_agent(settings: Settings | None = None) -> Agent:
         model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="none"),
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
         capabilities=[
-            hooks,
             WebSearch(),
-            MCP("https://mcp.amap.com/mcp?" + urlencode({
-                "key": settings.amap_maps_api_key.get_secret_value(),
-            }), tool_prefix="amap"),
+            MCP(
+                "https://mcp.amap.com/mcp?"
+                + urlencode(
+                    {
+                        "key": settings.amap_maps_api_key.get_secret_value(),
+                    }
+                ),
+                tool_prefix="amap",
+            ),
             LocalWorkspace(ROOT / "skills"),
             Skills(".", include=["flyai"]),
             FileSystem(read_only=True, tools=["read_file"]),
             Shell(
                 allowed_commands=["flyai"],
-                denied_operators=[";", "&&", "||", "|", ">", ">>", "<", "&", "`", "$(", "\n"],
+                denied_operators=[
+                    ";",
+                    "&&",
+                    "||",
+                    "|",
+                    ">",
+                    ">>",
+                    "<",
+                    "&",
+                    "`",
+                    "$(",
+                    "\n",
+                ],
                 tools=["run_command"],
                 default_timeout=60,
                 env={"FLYAI_API_KEY": settings.flyai_api_key.get_secret_value()}
-                if settings.flyai_api_key.get_secret_value() else None,
+                if settings.flyai_api_key.get_secret_value()
+                else None,
             ),
         ],
     )
@@ -76,12 +86,18 @@ def create_agent(settings: Settings | None = None) -> Agent:
         issues = trip.issues()
         if issues:
             return {"success": False, "issues": issues}
-        ctx.deps.confirmed[ctx.conversation_id] = trip
-        return {"success": True, "message": "交通和住宿已保存，可以开始每日行程规划。",
-                "trip": trip.model_dump(mode="json")}
+        assert ctx.conversation_id is not None  # Agent 在运行开始时解析会话 ID。
+        ctx.deps.save(ctx.conversation_id, trip)
+        return {
+            "success": True,
+            "message": "交通和住宿已保存，可以开始每日行程规划。",
+            "trip": trip.model_dump(mode="json"),
+        }
 
     return agent
 
 
 def create_app():
-    return create_agent().to_web(deps=TripStore())
+    from server import create_backend
+
+    return create_backend()

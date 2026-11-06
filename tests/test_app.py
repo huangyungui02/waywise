@@ -47,12 +47,19 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
     cli.write_text('#!/bin/sh\nprintf \'{"data":{"itemList":[]},"status":0}\\n\'\n')
     cli.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path) + ":/usr/bin:/bin")
-    calls = iter([
-        ("load_capability", {"id": "flyai"}),
-        ("read_file", {"path": "flyai/references/search-train.md"}),
-        ("run_command", {"command": "flyai search-train --origin 上海 --destination 杭州 --dep-date 2026-12-01"}),
-        ("amap_route", {}),
-    ])
+    calls = iter(
+        [
+            ("load_capability", {"id": "flyai"}),
+            ("read_file", {"path": "flyai/references/search-train.md"}),
+            (
+                "run_command",
+                {
+                    "command": "flyai search-train --origin 上海 --destination 杭州 --dep-date 2026-12-01"
+                },
+            ),
+            ("amap_route", {}),
+        ]
+    )
 
     def model(messages, info):
         call = next(calls, None)
@@ -63,7 +70,12 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
     agent = app.create_agent()
     with agent.override(model=FunctionModel(model)):
         result = agent.run_sync("检查旅行工具链")
-    results = [p for m in result.all_messages() for p in m.parts if isinstance(p, ToolReturnPart)]
+    results = [
+        p
+        for m in result.all_messages()
+        for p in m.parts
+        if isinstance(p, ToolReturnPart)
+    ]
     assert len(results) == 4
     assert "loaded" in str(results[0].content)
     assert "FlyAI — Travel" in repr(result.all_messages())
@@ -72,11 +84,14 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
     assert "30 分钟" in str(results[3].content)
 
 
-@pytest.mark.parametrize("tool,args", [
-    ("read_file", {"path": "../.env"}),
-    ("run_command", {"command": "python --version"}),
-    ("run_command", {"command": "flyai --help; echo unexpected"}),
-])
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("read_file", {"path": "../.env"}),
+        ("run_command", {"command": "python --version"}),
+        ("run_command", {"command": "flyai --help; echo unexpected"}),
+    ],
+)
 def test_tool_constraints(configured, tool, args):
     requests = 0
 
@@ -96,36 +111,55 @@ def test_tool_constraints(configured, tool, args):
         assert agent.run_sync("检查工具限制").output == "已拒绝"
 
 
-def test_official_web_endpoints(configured):
-    with TestClient(app.create_app(), base_url="http://127.0.0.1") as client:
+def test_web_endpoints(configured, tmp_path):
+    from server import create_backend
+
+    settings = Settings(database_path=tmp_path / "test.db")
+    with TestClient(create_backend(settings), base_url="http://127.0.0.1") as client:
         assert client.get("/api/health").status_code == 200
-        response = client.get("/api/configure")
+        response = client.get("/api/conversations")
         assert response.status_code == 200
-        assert "models" in response.json()
+        assert response.json() == []
 
 
-def test_web_allows_more_than_50_model_requests(configured):
+def test_web_allows_more_than_50_model_requests(configured, tmp_path):
     requests = 0
 
     async def stream_model(messages, info):
         nonlocal requests
         requests += 1
         if requests <= 50:
-            yield {0: DeltaToolCall(name="current_time", json_args="{}", tool_call_id=f"call-{requests}")}
+            yield {
+                0: DeltaToolCall(
+                    name="current_time", json_args="{}", tool_call_id=f"call-{requests}"
+                )
+            }
         else:
             yield "超过50次请求后正常完成"
 
     agent = app.create_agent()
-    from trip import TripStore
+    from server import create_backend
 
     with agent.override(model=FunctionModel(stream_function=stream_model)):
-        with TestClient(agent.to_web(deps=TripStore()), base_url="http://127.0.0.1") as client:
-            response = client.post("/api/chat", json={
-                "id": "limit-test",
-                "trigger": "submit-message",
-                "messages": [{"id": "user-1", "role": "user",
-                              "parts": [{"type": "text", "text": "测试请求上限"}]}],
-            })
+        with TestClient(
+            create_backend(Settings(database_path=tmp_path / "test.db"), agent),
+            base_url="http://127.0.0.1",
+        ) as client:
+            conversation_id = client.post("/api/conversations").json()["id"]
+            response = client.post(
+                f"/api/conversations/{conversation_id}/chat",
+                json={
+                    "id": conversation_id,
+                    "trigger": "submit-message",
+                    "messages": [
+                        {
+                            "id": "user-1",
+                            "role": "user",
+                            "parts": [{"type": "text", "text": "测试请求上限"}],
+                        }
+                    ],
+                },
+            )
     assert response.status_code == 200
     assert "超过50次请求后正常完成" in response.text
     assert requests == 51
@@ -137,14 +171,22 @@ def test_settings_dotenv_and_environment(monkeypatch, tmp_path):
         "DASHSCOPE_API_KEY=file-secret\nAMAP_MAPS_API_KEY=file-map-key\n"
         "TRAVEL_MODEL=qwen3.8-flash\nFLYAI_API_KEY=file-flyai-key\n"
     )
-    for name in ["DASHSCOPE_API_KEY", "AMAP_MAPS_API_KEY", "TRAVEL_MODEL", "FLYAI_API_KEY"]:
+    for name in [
+        "DASHSCOPE_API_KEY",
+        "AMAP_MAPS_API_KEY",
+        "TRAVEL_MODEL",
+        "FLYAI_API_KEY",
+    ]:
         monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=env_file)
     assert settings.dashscope_api_key.get_secret_value() == "file-secret"
     assert settings.flyai_api_key.get_secret_value() == "file-flyai-key"
     assert "file-secret" not in repr(settings)
     monkeypatch.setenv("DASHSCOPE_API_KEY", "env-secret")
-    assert Settings(_env_file=env_file).dashscope_api_key.get_secret_value() == "env-secret"
+    assert (
+        Settings(_env_file=env_file).dashscope_api_key.get_secret_value()
+        == "env-secret"
+    )
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -153,12 +195,19 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     provider_class = app.AlibabaProvider
     captured = []
     message = {
-        "id": "msg_test", "type": "message", "role": "assistant", "status": "completed",
+        "id": "msg_test",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
         "content": [{"type": "output_text", "text": "测试完成", "annotations": []}],
     }
     response = {
-        "id": "resp_test", "object": "response", "created_at": 1793836800,
-        "model": "qwen3.8-flash", "status": "completed", "error": None,
+        "id": "resp_test",
+        "object": "response",
+        "created_at": 1793836800,
+        "model": "qwen3.8-flash",
+        "status": "completed",
+        "error": None,
         "output": [message],
         "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
     }
@@ -170,13 +219,29 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
         if not streaming:
             return httpx2.Response(200, json=response)
         events = [
-            {"type": "response.created", "response": {**response, "output": [], "status": "in_progress"}},
-            {"type": "response.output_item.added", "output_index": 0,
-             "item": {**message, "content": [], "status": "in_progress"}},
-            {"type": "response.content_part.added", "output_index": 0, "item_id": "msg_test",
-             "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}},
-            {"type": "response.output_text.delta", "output_index": 0, "item_id": "msg_test",
-             "content_index": 0, "delta": "测试完成"},
+            {
+                "type": "response.created",
+                "response": {**response, "output": [], "status": "in_progress"},
+            },
+            {
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {**message, "content": [], "status": "in_progress"},
+            },
+            {
+                "type": "response.content_part.added",
+                "output_index": 0,
+                "item_id": "msg_test",
+                "content_index": 0,
+                "part": {"type": "output_text", "text": "", "annotations": []},
+            },
+            {
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "item_id": "msg_test",
+                "content_index": 0,
+                "delta": "测试完成",
+            },
             {"type": "response.output_item.done", "output_index": 0, "item": message},
             {"type": "response.completed", "response": response},
         ]
@@ -184,13 +249,22 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
             "data: " + json.dumps({**event, "sequence_number": i}) + "\n\n"
             for i, event in enumerate(events)
         )
-        return httpx2.Response(200, text=data, headers={"content-type": "text/event-stream"})
+        return httpx2.Response(
+            200, text=data, headers={"content-type": "text/event-stream"}
+        )
 
     async def run():
-        async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as client:
-            monkeypatch.setattr(app, "AlibabaProvider", lambda **kwargs: provider_class(
-                **kwargs, http_client=client,
-            ))
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(respond)
+        ) as client:
+            monkeypatch.setattr(
+                app,
+                "AlibabaProvider",
+                lambda **kwargs: provider_class(
+                    **kwargs,
+                    http_client=client,
+                ),
+            )
             agent = app.create_agent()
             if streaming:
                 async with agent.run_stream("测试网页工具配置") as result:
@@ -204,8 +278,12 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     assert body["reasoning"]["effort"] == "none"
     assert {t["type"] for t in body["tools"]} == {"web_search", "function"}
     assert {t["name"] for t in body["tools"] if t["type"] == "function"} >= {
-        "load_capability", "read_file", "run_command", "amap_route",
-        "current_time", "confirm_trip",
+        "load_capability",
+        "read_file",
+        "run_command",
+        "amap_route",
+        "current_time",
+        "confirm_trip",
     }
     assert "confirmed_trip" not in {t.get("name") for t in body["tools"]}
     assert "x-anthropic-billing-header" not in str(body)
