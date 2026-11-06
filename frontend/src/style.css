@@ -1,645 +1,132 @@
-:root{
-  font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;
-  color:#27392f;
-  background:#f8f9f5;
-  font-synthesis:none}
-  *{
-    box-sizing:border-box}
-    body{
-      margin:0}
-      button,a,textarea{
-        -webkit-tap-highlight-color:transparent}
-        button{
-          font:inherit;
-          cursor:pointer}
-          button:disabled{
-            opacity:.45;
-            cursor:default}
-            a{
-              color:inherit;
-              text-decoration:none}
-              button:focus-visible,a:focus-visible,textarea:focus-visible{
-                outline:2px solid #55866d;
-                outline-offset:3px}
-                .app{
-                  display:flex;
-                  height:100dvh;
-                  min-height:500px}
-                  .sidebar{
-                    width:264px;
-                    flex-shrink:0;
-                    background:#eff1e9;
-                    border-right:1px solid #dfe4d9;
-                    padding:32px 20px 24px;
-                    display:flex;
-                    flex-direction:column}
-                    .brand{
-                      display:flex;
-                      align-items:center;
-                      gap:12px;
-                      font-family:'Noto Serif SC','Songti SC','STSong',serif;
-                      font-size:26px;
-                      font-weight:600;
-                      letter-spacing:3px}
-                      .brand-mark{
-                        background:#344f3e;
-                        color:#fff;
-                        border-radius:13px 13px 3px 13px;
-                        width:44px;
-                        height:46px;
-                        display:grid;
-                        place-items:center;
-                        font-size:25px;
-                        letter-spacing:0}
-                        .brand small{
-                          font:10px sans-serif;
-                          letter-spacing:1px;
-                          color:#7d897e;
-                          display:block;
-                          margin-top:6px}
-                          .new-trip{
-                            margin:36px 0 32px;
-                            background:#fff;
-                            border:1px solid #d7ddd0;
-                            padding:13px;
-                            text-align:left;
-                            border-radius:9px;
-                            font-size:13px;
-                            color:#3a5341}
-                            .section-label{
-                              font-size:10px;
-                              color:#7d897e;
-                              letter-spacing:2px;
-                              padding:0 10px;
-                              display:flex;
-                              justify-content:space-between}
-                              .section-label span{
-                                letter-spacing:0}
-                                .conversations{
-                                  margin-top:14px;
-                                  overflow-y:auto;
-                                  flex:1}
-                                  .conversation{
-                                    display:flex;
-                                    align-items:center;
-                                    border-radius:8px;
-                                    margin-bottom:5px;
-                                    position:relative}
-                                    .conversation:has(a.active){
-                                      background:#dfe6d9}
-                                      .conversation a{
-                                        display:flex;
-                                        gap:10px;
-                                        padding:13px 30px 13px 10px;
-                                        flex:1;
-                                        min-width:0;
-                                        font-size:12px}
-                                        .conversation a>span{
-                                          font-size:18px;
-                                          color:#7e8b75}
-                                          .conversation a>div{
-                                            white-space:nowrap;
-                                            text-overflow:ellipsis;
-                                            overflow:hidden;
-                                            line-height:1.6}
-                                            .conversation small{
-                                              display:block;
-                                              color:#92998e;
-                                              font-size:10px;
-                                              margin-top:4px}
-                                              .conversation button{
-                                                position:absolute;
-                                                right:5px;
-                                                border:0;
-                                                background:transparent;
-                                                color:#8d978b;
-                                                font-size:18px;
-                                                padding:5px}
-                                                .sidebar-foot{
-                                                  font-size:11px;
-                                                  padding:20px 6px 0;
-                                                  border-top:1px solid #dce1d5;
-                                                  color:#65765f}
-                                                  .sidebar-foot small{
-                                                    display:block;
-                                                    font-size:10px;
-                                                    margin:9px 0 0 15px;
-                                                    color:#949d8e}
-                                                    .status-dot{
-                                                      display:inline-block;
-                                                      width:5px;
-                                                      height:5px;
-                                                      border-radius:50%;
-                                                      background:#78916b;
-                                                      margin-right:8px}
-                                                      .main{
-                                                        flex:1;
-                                                        min-width:0;
-                                                        position:relative;
-                                                        display:flex;
-                                                        flex-direction:column}
-                                                        .welcome{
-                                                          margin:auto;
-                                                          text-align:center;
-                                                          padding:45px 24px;
-                                                          position:relative}
-                                                          .eyebrow{
-                                                            font-size:9px;
-                                                            letter-spacing:3px;
-                                                            color:#8a957c;
-                                                            font-weight:600}
-                                                            .landscape{
-                                                              width:230px;
-                                                              height:90px;
-                                                              margin:28px auto 10px;
-                                                              position:relative;
-                                                              overflow:hidden}
-                                                              .landscape:before,.landscape:after{
-                                                                content:'';
-                                                                position:absolute;
-                                                                width:150px;
-                                                                height:150px;
-                                                                background:#dce3d4;
-                                                                border-radius:18px;
-                                                                transform:rotate(45deg);
-                                                                top:55px;
-                                                                left:12px}
-                                                                .landscape:after{
-                                                                  background:#aabb9f;
-                                                                  top:65px;
-                                                                  left:95px;
-                                                                  width:130px;
-                                                                  height:130px}
-                                                                  .landscape span{
-                                                                    position:absolute;
-                                                                    top:8px;
-                                                                    right:52px;
-                                                                    background:#d8b899;
-                                                                    border-radius:50%;
-                                                                    width:23px;
-                                                                    height:23px;
-                                                                    font-size:0}
-                                                                    .welcome h1{
-                                                                      font-family:'Noto Serif SC','Songti SC','STSong',serif;
-                                                                      font-weight:500;
-                                                                      letter-spacing:4px;
-                                                                      font-size:44px;
-                                                                      line-height:1.5;
-                                                                      margin:18px 0}
-                                                                      .welcome p{
-                                                                        font-size:13px;
-                                                                        color:#82907f;
-                                                                        line-height:2}
-                                                                        .primary{
-                                                                          background:#36543f;
-                                                                          color:white;
-                                                                          padding:14px 23px;
-                                                                          border:0;
-                                                                          border-radius:6px;
-                                                                          font-size:12px;
-                                                                          margin-top:20px;
-                                                                          min-width:170px;
-                                                                          display:inline-flex;
-                                                                          justify-content:space-between;
-                                                                          gap:35px}
-                                                                          .primary:hover{
-                                                                            background:#46664f}
-                                                                            .steps{
-                                                                              display:flex;
-                                                                              gap:28px;
-                                                                              margin-top:65px;
-                                                                              font-size:10px;
-                                                                              color:#929a88}
-                                                                              .chat-header{
-                                                                                height:100px;
-                                                                                padding:27px 36px;
-                                                                                display:flex;
-                                                                                align-items:center;
-                                                                                justify-content:space-between;
-                                                                                border-bottom:1px solid #e6e9e0;
-                                                                                flex-shrink:0}
-                                                                                .chat-header h2{
-                                                                                  font-family:'Noto Serif SC','Songti SC','STSong',serif;
-                                                                                  font-size:18px;
-                                                                                  font-weight:500;
-                                                                                  margin:8px 0 0;
-                                                                                  max-width:600px;
-                                                                                  overflow:hidden;
-                                                                                  text-overflow:ellipsis;
-                                                                                  white-space:nowrap}
-                                                                                  .header-tag{
-                                                                                    font-size:10px;
-                                                                                    color:#87907e;
-                                                                                    border:1px solid #dfe5d6;
-                                                                                    border-radius:20px;
-                                                                                    padding:8px 12px}
-                                                                                    .chat-layout{
-                                                                                      display:flex;
-                                                                                      flex:1;
-                                                                                      min-height:0;
-                                                                                      padding:0 28px;
-                                                                                      gap:26px}
-                                                                                      .chat-column{
-                                                                                        flex:1;
-                                                                                        min-width:0;
-                                                                                        display:flex;
-                                                                                        flex-direction:column}
-                                                                                        .messages{
-                                                                                          flex:1;
-                                                                                          overflow-y:auto;
-                                                                                          scroll-behavior:smooth;
-                                                                                          padding:26px 8px;
-                                                                                          scrollbar-width:thin;
-                                                                                          scrollbar-color:#d4ddce transparent}
-                                                                                          .message{
-                                                                                            display:flex;
-                                                                                            gap:13px;
-                                                                                            margin:10px 0 30px}
-                                                                                            .avatar{
-                                                                                              width:28px;
-                                                                                              height:28px;
-                                                                                              border-radius:8px;
-                                                                                              background:#e4eadc;
-                                                                                              display:grid;
-                                                                                              place-items:center;
-                                                                                              font:13px 'Noto Serif SC','Songti SC','STSong',serif;
-                                                                                              flex-shrink:0;
-                                                                                              color:#587048}
-                                                                                              .user .avatar{
-                                                                                                background:#eae7df;
-                                                                                                color:#97856f;
-                                                                                                font:11px sans-serif}
-                                                                                                .message-body{
-                                                                                                  min-width:0;
-                                                                                                  flex:1}
-                                                                                                  .message-author{
-                                                                                                    font-size:10px;
-                                                                                                    color:#8c9685;
-                                                                                                    margin:5px 0 12px}
-                                                                                                    .markdown{
-                                                                                                      font-size:13px;
-                                                                                                      line-height:1.95;
-                                                                                                      overflow-x:auto;
-                                                                                                      overflow-wrap:anywhere}
-                                                                                                      .markdown p{
-                                                                                                        margin:0 0 14px}
-                                                                                                        .markdown h1,.markdown h2,.markdown h3{
-                                                                                                          font-size:16px;
-                                                                                                          margin:22px 0 12px}
-                                                                                                          .markdown a{
-                                                                                                            color:#477454;
-                                                                                                            text-decoration:underline;
-                                                                                                            text-underline-offset:3px}
-                                                                                                            .markdown table{
-                                                                                                              border-collapse:collapse;
-                                                                                                              font-size:12px;
-                                                                                                              display:block;
-                                                                                                              overflow:auto;
-                                                                                                              margin-bottom:16px}
-                                                                                                              .markdown th,.markdown td{
-                                                                                                                padding:10px 12px;
-                                                                                                                border:1px solid #dfe5d8;
-                                                                                                                text-align:left;
-                                                                                                                min-width:85px}
-                                                                                                                .markdown th{
-                                                                                                                  background:#eef1e8}
-                                                                                                                  .markdown pre{
-                                                                                                                    background:#eef0e9;
-                                                                                                                    padding:14px;
-                                                                                                                    border-radius:6px;
-                                                                                                                    overflow:auto}
-                                                                                                                    .markdown img{
-                                                                                                                      max-width:100%;
-                                                                                                                      border-radius:8px}
-                                                                                                                      .markdown ul,.markdown ol{
-                                                                                                                        padding-left:22px}
-                                                                                                                        .tool{
-                                                                                                                          border:1px solid #e1e7d9;
-                                                                                                                          background:#f2f5ed;
-                                                                                                                          border-radius:7px;
-                                                                                                                          margin:8px 0;
-                                                                                                                          font-size:11px}
-                                                                                                                          .tool summary{
-                                                                                                                            display:flex;
-                                                                                                                            gap:8px;
-                                                                                                                            align-items:center;
-                                                                                                                            padding:10px;
-                                                                                                                            cursor:pointer;
-                                                                                                                            list-style:none;
-                                                                                                                            color:#6e7e64}
-                                                                                                                            .tool summary small{
-                                                                                                                              margin-left:auto;
-                                                                                                                              font-size:9px;
-                                                                                                                              color:#939d89}
-                                                                                                                              .tool pre{
-                                                                                                                                white-space:pre-wrap;
-                                                                                                                                overflow-wrap:anywhere;
-                                                                                                                                padding:0 12px 10px;
-                                                                                                                                max-height:240px;
-                                                                                                                                overflow:auto;
-                                                                                                                                font-size:10px;
-                                                                                                                                color:#77816d}
-                                                                                                                                .chat-intro{
-                                                                                                                                  padding:60px 16px}
-                                                                                                                                  .chat-intro>span{
-                                                                                                                                    font-size:30px;
-                                                                                                                                    color:#a4b39a}
-                                                                                                                                    .chat-intro h2{
-                                                                                                                                      font:26px 'Noto Serif SC','Songti SC','STSong',serif;
-                                                                                                                                      letter-spacing:2px}
-                                                                                                                                      .chat-intro p{
-                                                                                                                                        color:#87907e;
-                                                                                                                                        font-size:13px;
-                                                                                                                                        line-height:2}
-                                                                                                                                        .chat-intro button{
-                                                                                                                                          margin-top:22px;
-                                                                                                                                          background:#eef2e7;
-                                                                                                                                          color:#6e7f5f;
-                                                                                                                                          border:1px solid #dfe7d4;
-                                                                                                                                          padding:12px;
-                                                                                                                                          border-radius:6px;
-                                                                                                                                          font-size:11px}
-                                                                                                                                          .composer{
-                                                                                                                                            border:1px solid #d7dfce;
-                                                                                                                                            background:white;
-                                                                                                                                            border-radius:12px;
-                                                                                                                                            padding:15px 17px;
-                                                                                                                                            box-shadow:0 5px 20px #344f3e05}
-                                                                                                                                            .composer:focus-within{
-                                                                                                                                              border-color:#9eaf8f}
-                                                                                                                                              .composer textarea{
-                                                                                                                                                width:100%;
-                                                                                                                                                resize:none;
-                                                                                                                                                border:0;
-                                                                                                                                                outline:none;
-                                                                                                                                                min-height:53px;
-                                                                                                                                                font:13px/1.7 inherit;
-                                                                                                                                                background:transparent;
-                                                                                                                                                color:#314835}
-                                                                                                                                                .composer textarea::placeholder{
-                                                                                                                                                  color:#a0a697;
-                                                                                                                                                  font-size:12px}
-                                                                                                                                                  .composer-foot{
-                                                                                                                                                    display:flex;
-                                                                                                                                                    align-items:center;
-                                                                                                                                                    justify-content:space-between;
-                                                                                                                                                    gap:8px}
-                                                                                                                                                    .composer-foot small{
-                                                                                                                                                      font-size:9px;
-                                                                                                                                                      color:#9ba58e}
-                                                                                                                                                      .composer-foot button{
-                                                                                                                                                        background:#3c5b45;
-                                                                                                                                                        color:#fff;
-                                                                                                                                                        border:0;
-                                                                                                                                                        border-radius:6px;
-                                                                                                                                                        padding:9px 14px;
-                                                                                                                                                        font-size:11px}
-                                                                                                                                                        .disclaimer{
-                                                                                                                                                          text-align:center;
-                                                                                                                                                          font-size:9px;
-                                                                                                                                                          color:#a3aa9a;
-                                                                                                                                                          margin:12px 0 16px}
-                                                                                                                                                          .trip-panel{
-                                                                                                                                                            width:240px;
-                                                                                                                                                            align-self:flex-start;
-                                                                                                                                                            max-height:calc(100dvh - 145px);
-                                                                                                                                                            overflow-y:auto;
-                                                                                                                                                            flex-shrink:0;
-                                                                                                                                                            border:1px solid #e0e6d7;
-                                                                                                                                                            background:#f1f3ec;
-                                                                                                                                                            border-radius:10px;
-                                                                                                                                                            margin-top:28px;
-                                                                                                                                                            padding:17px;
-                                                                                                                                                            font-size:12px}
-                                                                                                                                                            .trip-panel>summary{
-                                                                                                                                                              cursor:pointer;
-                                                                                                                                                              font-weight:500;
-                                                                                                                                                              list-style:none;
-                                                                                                                                                              display:flex;
-                                                                                                                                                              justify-content:space-between}
-                                                                                                                                                              .trip-panel>summary span{
-                                                                                                                                                                font-size:9px;
-                                                                                                                                                                font-weight:400;
-                                                                                                                                                                color:#8a987b;
-                                                                                                                                                                border:1px solid #dbe3d0;
-                                                                                                                                                                border-radius:4px;
-                                                                                                                                                                padding:3px 5px}
-                                                                                                                                                                .trip-panel>p{
-                                                                                                                                                                  color:#939e86;
-                                                                                                                                                                  line-height:1.9;
-                                                                                                                                                                  font-size:11px;
-                                                                                                                                                                  margin-top:18px}
-                                                                                                                                                                  .trip-panel section{
-                                                                                                                                                                    border-top:1px solid #dfe5d5;
-                                                                                                                                                                    padding:17px 0 10px}
-                                                                                                                                                                    .trip-panel section small{
-                                                                                                                                                                      font-size:9px;
-                                                                                                                                                                      color:#8a987c;
-                                                                                                                                                                      display:block;
-                                                                                                                                                                      margin-bottom:9px}
-                                                                                                                                                                      .trip-panel section strong{
-                                                                                                                                                                        font-weight:500;
-                                                                                                                                                                        display:block}
-                                                                                                                                                                        .trip-panel section p{
-                                                                                                                                                                          font-size:11px;
-                                                                                                                                                                          line-height:1.8;
-                                                                                                                                                                          color:#748365}
-                                                                                                                                                                          .trip-panel time{
-                                                                                                                                                                            font-size:10px;
-                                                                                                                                                                            line-height:1.8;
-                                                                                                                                                                            color:#919a84}
-                                                                                                                                                                            .trip-panel section div{
-                                                                                                                                                                              margin-top:10px;
-                                                                                                                                                                              font-size:10px}
-                                                                                                                                                                              .trip-panel a{
-                                                                                                                                                                                color:#4e7147}
-                                                                                                                                                                                .booked{
-                                                                                                                                                                                  color:#7f8c71}
-                                                                                                                                                                                  .error,.notice{
-                                                                                                                                                                                    font-size:12px;
-                                                                                                                                                                                    color:#a35c42;
-                                                                                                                                                                                    background:#f8eee7;
-                                                                                                                                                                                    border-radius:6px;
-                                                                                                                                                                                    padding:12px;
-                                                                                                                                                                                    line-height:1.7}
-                                                                                                                                                                                    .error button{
-                                                                                                                                                                                      border:0;
-                                                                                                                                                                                      background:none;
-                                                                                                                                                                                      color:inherit}
-                                                                                                                                                                                      .notice{
-                                                                                                                                                                                        color:#8d8060;
-                                                                                                                                                                                        background:#f2efe4}
-                                                                                                                                                                                        .thinking{
-                                                                                                                                                                                          font-size:12px;
-                                                                                                                                                                                          color:#95a287;
-                                                                                                                                                                                          margin-left:40px}
-                                                                                                                                                                                          .loading-bar{
-                                                                                                                                                                                            height:2px;
-                                                                                                                                                                                            background:#93a982;
-                                                                                                                                                                                            width:50%;
-                                                                                                                                                                                            position:absolute;
-                                                                                                                                                                                            top:0;
-                                                                                                                                                                                            animation:loading 1s infinite alternate}
-                                                                                                                                                                                            @keyframes loading{
-                                                                                                                                                                                              to{
-                                                                                                                                                                                                transform:translateX(100%)}
-                                                                                                                                                                                              }
-                                                                                                                                                                                              @media(min-width:1450px){
-                                                                                                                                                                                                .chat-layout{
-                                                                                                                                                                                                  padding:0 50px;
-                                                                                                                                                                                                  gap:40px}
-                                                                                                                                                                                                  .chat-header{
-                                                                                                                                                                                                    padding-left:58px}
-                                                                                                                                                                                                    .messages{
-                                                                                                                                                                                                      padding:35px 15px}
-                                                                                                                                                                                                      .trip-panel{
-                                                                                                                                                                                                        width:265px}
-                                                                                                                                                                                                      }
-                                                                                                                                                                                                      @media(max-width:1050px){
-                                                                                                                                                                                                        .sidebar{
-                                                                                                                                                                                                          width:220px;
-                                                                                                                                                                                                          padding:26px 15px}
-                                                                                                                                                                                                          .trip-panel{
-                                                                                                                                                                                                            width:205px;
-                                                                                                                                                                                                            padding:13px}
-                                                                                                                                                                                                            .chat-layout{
-                                                                                                                                                                                                              padding:0 18px;
-                                                                                                                                                                                                              gap:16px}
-                                                                                                                                                                                                              .header-tag{
-                                                                                                                                                                                                                display:none}
-                                                                                                                                                                                                                .chat-header{
-                                                                                                                                                                                                                  padding:24px}
-                                                                                                                                                                                                                  .chat-header h2{
-                                                                                                                                                                                                                    max-width:450px}
-                                                                                                                                                                                                                  }
-                                                                                                                                                                                                                  @media(max-width:800px){
-                                                                                                                                                                                                                    .trip-panel{
-                                                                                                                                                                                                                      width:auto;
-                                                                                                                                                                                                                      align-self:stretch;
-                                                                                                                                                                                                                      max-height:260px;
-                                                                                                                                                                                                                      margin:14px 0 0;
-                                                                                                                                                                                                                      order:-1;
-                                                                                                                                                                                                                      flex-shrink:0}
-                                                                                                                                                                                                                      .trip-panel[open]{
-                                                                                                                                                                                                                        max-height:220px}
-                                                                                                                                                                                                                        .trip-panel:not([open]){
-                                                                                                                                                                                                                          padding:12px}
-                                                                                                                                                                                                                          .trip-panel section{
-                                                                                                                                                                                                                            display:inline-block;
-                                                                                                                                                                                                                            vertical-align:top;
-                                                                                                                                                                                                                            width:50%;
-                                                                                                                                                                                                                            padding:12px 8px}
-                                                                                                                                                                                                                            .trip-panel>p{
-                                                                                                                                                                                                                              margin:8px 0}
-                                                                                                                                                                                                                              .chat-layout{
-                                                                                                                                                                                                                                flex-direction:column;
-                                                                                                                                                                                                                                gap:0}
-                                                                                                                                                                                                                                .chat-column{
-                                                                                                                                                                                                                                  min-height:0}
-                                                                                                                                                                                                                                  .chat-intro{
-                                                                                                                                                                                                                                    padding:35px 6px}
-                                                                                                                                                                                                                                    .messages{
-                                                                                                                                                                                                                                      padding:18px 0}
-                                                                                                                                                                                                                                      .chat-header h2{
-                                                                                                                                                                                                                                        max-width:330px}
-                                                                                                                                                                                                                                      }
-                                                                                                                                                                                                                                      @media(max-width:600px){
-                                                                                                                                                                                                                                        .app{
-                                                                                                                                                                                                                                          flex-direction:column;
-                                                                                                                                                                                                                                          min-height:0}
-                                                                                                                                                                                                                                          .sidebar{
-                                                                                                                                                                                                                                            width:100%;
-                                                                                                                                                                                                                                            padding:12px 16px 8px;
-                                                                                                                                                                                                                                            border-right:0;
-                                                                                                                                                                                                                                            border-bottom:1px solid #dfe4d9;
-                                                                                                                                                                                                                                            flex-direction:row;
-                                                                                                                                                                                                                                            flex-wrap:wrap;
-                                                                                                                                                                                                                                            align-items:center;
-                                                                                                                                                                                                                                            gap:10px;
-                                                                                                                                                                                                                                            flex-shrink:0}
-                                                                                                                                                                                                                                            .brand{
-                                                                                                                                                                                                                                              font-size:20px;
-                                                                                                                                                                                                                                              letter-spacing:2px}
-                                                                                                                                                                                                                                              .brand-mark{
-                                                                                                                                                                                                                                                width:31px;
-                                                                                                                                                                                                                                                height:33px;
-                                                                                                                                                                                                                                                border-radius:9px 9px 2px 9px;
-                                                                                                                                                                                                                                                font-size:19px}
-                                                                                                                                                                                                                                                .brand small,.section-label,.sidebar-foot{
-                                                                                                                                                                                                                                                  display:none}
-                                                                                                                                                                                                                                                  .new-trip{
-                                                                                                                                                                                                                                                    margin:0 0 0 auto;
-                                                                                                                                                                                                                                                    padding:8px 11px;
-                                                                                                                                                                                                                                                    font-size:11px}
-                                                                                                                                                                                                                                                    .conversations{
-                                                                                                                                                                                                                                                      display:flex;
-                                                                                                                                                                                                                                                      flex-basis:100%;
-                                                                                                                                                                                                                                                      overflow-x:auto;
-                                                                                                                                                                                                                                                      margin:0;
-                                                                                                                                                                                                                                                      gap:5px;
-                                                                                                                                                                                                                                                      max-height:45px}
-                                                                                                                                                                                                                                                      .conversation{
-                                                                                                                                                                                                                                                        flex-shrink:0;
-                                                                                                                                                                                                                                                        margin:0;
-                                                                                                                                                                                                                                                        max-width:175px}
-                                                                                                                                                                                                                                                        .conversation a{
-                                                                                                                                                                                                                                                          padding:7px 27px 7px 8px;
-                                                                                                                                                                                                                                                          font-size:10px}
-                                                                                                                                                                                                                                                          .conversation a>span{
-                                                                                                                                                                                                                                                            font-size:13px}
-                                                                                                                                                                                                                                                            .conversation small{
-                                                                                                                                                                                                                                                              display:none}
-                                                                                                                                                                                                                                                              .main{
-                                                                                                                                                                                                                                                                min-height:0}
-                                                                                                                                                                                                                                                                .chat-header{
-                                                                                                                                                                                                                                                                  height:70px;
-                                                                                                                                                                                                                                                                  padding:14px 18px}
-                                                                                                                                                                                                                                                                  .chat-header h2{
-                                                                                                                                                                                                                                                                    font-size:15px;
-                                                                                                                                                                                                                                                                    max-width:85vw;
-                                                                                                                                                                                                                                                                    margin-top:5px}
-                                                                                                                                                                                                                                                                    .eyebrow{
-                                                                                                                                                                                                                                                                      font-size:8px;
-                                                                                                                                                                                                                                                                      letter-spacing:2px}
-                                                                                                                                                                                                                                                                      .chat-layout{
-                                                                                                                                                                                                                                                                        padding:0 12px}
-                                                                                                                                                                                                                                                                        .welcome{
-                                                                                                                                                                                                                                                                          padding:25px 20px}
-                                                                                                                                                                                                                                                                          .welcome h1{
-                                                                                                                                                                                                                                                                            font-size:33px}
-                                                                                                                                                                                                                                                                            .welcome p{
-                                                                                                                                                                                                                                                                              font-size:12px}
-                                                                                                                                                                                                                                                                              .landscape{
-                                                                                                                                                                                                                                                                                margin-top:15px}
-                                                                                                                                                                                                                                                                                .steps{
-                                                                                                                                                                                                                                                                                  gap:13px;
-                                                                                                                                                                                                                                                                                  font-size:9px;
-                                                                                                                                                                                                                                                                                  margin-top:38px}
-                                                                                                                                                                                                                                                                                  .message{
-                                                                                                                                                                                                                                                                                    gap:9px;
-                                                                                                                                                                                                                                                                                    margin-bottom:22px}
-                                                                                                                                                                                                                                                                                    .avatar{
-                                                                                                                                                                                                                                                                                      width:23px;
-                                                                                                                                                                                                                                                                                      height:25px;
-                                                                                                                                                                                                                                                                                      font-size:11px}
-                                                                                                                                                                                                                                                                                      .markdown{
-                                                                                                                                                                                                                                                                                        font-size:12px}
-                                                                                                                                                                                                                                                                                        .composer{
-                                                                                                                                                                                                                                                                                          padding:12px}
-                                                                                                                                                                                                                                                                                          .composer-foot small{
-                                                                                                                                                                                                                                                                                            font-size:8px}
-                                                                                                                                                                                                                                                                                            .trip-panel{
-                                                                                                                                                                                                                                                                                              margin-top:10px}
-                                                                                                                                                                                                                                                                                              .trip-panel[open]{
-                                                                                                                                                                                                                                                                                                max-height:155px}
-                                                                                                                                                                                                                                                                                                .trip-note{
-                                                                                                                                                                                                                                                                                                  display:none}
-                                                                                                                                                                                                                                                                                                  .disclaimer{
-                                                                                                                                                                                                                                                                                                    margin-bottom:max(9px,env(safe-area-inset-bottom));
-                                                                                                                                                                                                                                                                                                    font-size:8px}
-                                                                                                                                                                                                                                                                                                  }
-                                                                                                                                                                                                                                                                                                  @media(prefers-reduced-motion:reduce){
-                                                                                                                                                                                                                                                                                                    *{
-                                                                                                                                                                                                                                                                                                      scroll-behavior:auto!important;
-                                                                                                                                                                                                                                                                                                      animation:none!important}
-                                                                                                                                                                                                                                                                                                    }
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "@tailwindcss/typography";
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-serif: "Songti SC", "STSong", ui-serif, serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #faf9f5;
+  --foreground: #1f1e1b;
+  --card: #ffffff;
+  --card-foreground: #1f1e1b;
+  --popover: #ffffff;
+  --popover-foreground: #1f1e1b;
+  --primary: #2d5a4c;
+  --primary-foreground: #ffffff;
+  --secondary: #f0eee8;
+  --secondary-foreground: #2c2a26;
+  --muted: #f3f1ec;
+  --muted-foreground: #78756e;
+  --accent: #ebe8e0;
+  --accent-foreground: #1f1e1b;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #e7e4dc;
+  --input: #e7e4dc;
+  --ring: #2d5a4c;
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: #f3f1ec;
+  --sidebar-foreground: #2c2a26;
+  --sidebar-primary: #2d5a4c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9e6de;
+  --sidebar-accent-foreground: #1f1e1b;
+  --sidebar-border: #e7e4dc;
+  --sidebar-ring: #2d5a4c;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

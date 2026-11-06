@@ -139,7 +139,8 @@ npm --prefix frontend ci
 ```
 
 后端模块保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
-`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`。
+`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Tailwind CSS 和 shadcn/ui。页面组件在 `src/components/`，
+官方 UI 组件在 `src/components/ui/`；`src/style.css` 只保留样式导入和主题配置。
 
 分别在两个终端启动后端和前端：
 
