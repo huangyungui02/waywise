@@ -12,7 +12,7 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai.toolsets import FunctionToolset
 from starlette.testclient import TestClient
 
-import app
+import agent as agent_module
 from settings import Settings
 
 
@@ -33,13 +33,13 @@ def configured(monkeypatch):
 
             return tools
 
-    monkeypatch.setattr(app, "MCP", lambda *args, **kwargs: LocalMaps())
+    monkeypatch.setattr(agent_module, "MCP", lambda *args, **kwargs: LocalMaps())
 
 
 def test_missing_map_key(monkeypatch):
     monkeypatch.delenv("AMAP_MAPS_API_KEY", raising=False)
     with pytest.raises(ValueError, match="AMAP_MAPS_API_KEY"):
-        app.Settings(_env_file=None)
+        agent_module.Settings(_env_file=None)
 
 
 def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
@@ -76,7 +76,7 @@ def test_skill_reference_cli_and_maps(configured, monkeypatch, tmp_path):
             return ModelResponse(parts=[ToolCallPart(*call)])
         return ModelResponse(parts=[TextPart("测试完成")])
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
         result = agent.run_sync("检查旅行工具链")
     results = [
@@ -115,7 +115,7 @@ def test_tool_constraints(configured, tool, args):
         )
         return ModelResponse(parts=[TextPart("已拒绝")])
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
         assert agent.run_sync("检查工具限制").output == "已拒绝"
 
@@ -131,7 +131,7 @@ def test_flyai_execution_errors(configured, monkeypatch, outcome):
             raise FileNotFoundError("flyai")
         return subprocess.CompletedProcess(command, 2, "原始输出", "查询失败")
 
-    monkeypatch.setattr(app.subprocess, "run", execute)
+    monkeypatch.setattr(agent_module.subprocess, "run", execute)
     requests = 0
 
     def model(messages, info):
@@ -163,16 +163,16 @@ def test_flyai_execution_errors(configured, monkeypatch, outcome):
             assert result["stderr"]
         return ModelResponse(parts=[TextPart("已说明查询失败")])
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
         assert agent.run_sync("查询酒店").output == "已说明查询失败"
 
 
 def test_web_endpoints(configured, tmp_path):
-    from server import create_backend
+    from app import create_app
 
     settings = Settings(database_path=tmp_path / "test.db")
-    with TestClient(create_backend(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
         assert client.get("/api/health").status_code == 200
         response = client.get("/api/conversations")
         assert response.status_code == 200
@@ -194,12 +194,12 @@ def test_web_allows_more_than_50_model_requests(configured, tmp_path):
         else:
             yield "超过50次请求后正常完成"
 
-    agent = app.create_agent()
-    from server import create_backend
+    agent = agent_module.create_agent()
+    from app import create_app
 
     with agent.override(model=FunctionModel(stream_function=stream_model)):
         with TestClient(
-            create_backend(Settings(database_path=tmp_path / "test.db"), agent),
+            create_app(Settings(database_path=tmp_path / "test.db"), agent),
             base_url="http://127.0.0.1",
         ) as client:
             conversation_id = client.post("/api/conversations").json()["id"]
@@ -249,7 +249,7 @@ def test_settings_dotenv_and_environment(monkeypatch, tmp_path):
 @pytest.mark.parametrize("streaming", [False, True])
 def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     """真实适配器 + HTTP Mock：原生搜索与函数工具共存，普通/流式响应均可读。"""
-    provider_class = app.AlibabaProvider
+    provider_class = agent_module.AlibabaProvider
     captured = []
     message = {
         "id": "msg_test",
@@ -315,14 +315,14 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
             transport=httpx2.MockTransport(respond)
         ) as client:
             monkeypatch.setattr(
-                app,
+                agent_module,
                 "AlibabaProvider",
                 lambda **kwargs: provider_class(
                     **kwargs,
                     http_client=client,
                 ),
             )
-            agent = app.create_agent()
+            agent = agent_module.create_agent()
             if streaming:
                 async with agent.run_stream("测试网页工具配置") as result:
                     assert await result.get_output() == "测试完成"

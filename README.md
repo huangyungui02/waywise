@@ -6,28 +6,18 @@
 
 目前支持 **单个目的城市、直达往返、酒店住宿**，去程和回程可以使用不同交通方式。
 
-## 准备环境
+## Docker 部署
 
-- Python 3.12 或以上版本
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- Node.js 22.12 或以上版本和 npm，用于构建界面及安装飞猪命令行工具
-- 百炼 API Key 和高德 Web 服务 Key
+安装 Docker Engine 或 Docker Desktop，并确保可以使用 Docker Compose v2。
+无需在宿主机安装 Python、Node.js 或飞猪 CLI，镜像会安装运行依赖并构建前端。
 
-## 安装
-
-下载或克隆本仓库，进入项目根目录，执行：
+下载或克隆仓库，进入项目根目录：
 
 ```bash
-uv sync
-npm install -g @fly-ai/flyai-cli
 cp .env.example .env
-npm --prefix frontend ci
-npm --prefix frontend run build
 ```
 
-## 配置
-
-编辑项目根目录的 `.env`：
+编辑 `.env`，填写百炼 API Key 和高德 **Web 服务** Key：
 
 ```dotenv
 DASHSCOPE_API_KEY=你的百炼APIKey
@@ -37,26 +27,57 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 | 配置项 | 是否必填 | 说明 |
 | --- | --- | --- |
 | `DASHSCOPE_API_KEY` | 是 | [百炼 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
-| `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 **Web 服务** 类型 Key |
+| `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 Web 服务类型 Key |
 | `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
-| `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，更换时需支持 Responses 接口、内置搜索和工具调用 |
+| `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，需支持 Responses 接口、内置搜索和工具调用 |
 | `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
-| `DATABASE_PATH` | 否 | 默认 `data/travel.db`，保存聊天、执行快照和已确认安排 |
 
-已有飞猪 CLI 本机配置时可以继续使用。环境变量优先于 `.env`；请勿提交包含密钥的 `.env`。
-模型、搜索及其他服务的费用与额度以各服务提供方为准。
+Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
+已有飞猪凭据请通过 `FLYAI_API_KEY` 配置。模型、搜索及其他服务费用以提供方为准。
 
-## 启动
-
-在项目根目录运行：
+启动：
 
 ```bash
-uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
+docker compose up -d --build
+docker compose ps
 ```
 
-在浏览器打开 **http://127.0.0.1:7932**，即可开始聊天。停止服务时在终端按 `Ctrl+C`。
+打开 **http://127.0.0.1:7932**。首次构建需要下载镜像和依赖，可通过以下命令查看日志：
 
-界面由本地服务提供，无需从 CDN 加载。若页面无法打开，检查前端构建是否完成以及终端是否启动成功。
+```bash
+docker compose logs -f travel-agent
+```
+
+更新代码后重新运行 `docker compose up -d --build`；停止并移除容器：
+
+```bash
+docker compose down
+```
+
+聊天和行程保存在 Docker 命名卷 `travel-data` 的 `/app/data/travel.db`，
+重建镜像或执行上述停止命令会保留数据。请勿使用 `docker compose down -v`，它会删除数据卷。
+Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发使用。
+
+备份时先停止服务，再复制整个数据目录：
+
+```bash
+docker compose stop travel-agent
+docker compose cp travel-agent:/app/data ./backup
+docker compose start travel-agent
+```
+
+Docker 默认使用独立数据卷，不会自动导入旧的本地 `data/` 数据。需要迁移时，
+先启动一次容器以建立数据卷，然后停止服务，将旧数据库目录内容复制进去并修正权限：
+
+```bash
+docker compose stop travel-agent
+docker compose cp ./data/. travel-agent:/app/data/
+docker compose run --rm --no-deps --user root travel-agent chown -R traveler:traveler /app/data
+docker compose start travel-agent
+```
+
+迁移前先备份原数据库和容器数据；复制时两端服务都应停止。
+默认只绑定本机地址，当前没有用户登录与多用户隔离。
 
 ## 如何使用
 
@@ -76,7 +97,7 @@ uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
 确认方案只表示同意按此规划，**不代表已经购买**。购票和订房需要你通过提供的链接前往预订页面完成。
 
 左侧可以新建、切换和删除旅行。聊天和已确认安排保存在后端数据库，关闭页面或重启服务后，
-重新打开对应会话即可读取。备份时先停止服务，再复制 `data/` 目录（修改路径后请备份实际数据库文件）。
+重新打开对应会话即可读取。备份方式见上面的 Docker 部署说明。
 
 ## 当前限制
 
@@ -91,14 +112,28 @@ uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
 项目基于 [PydanticAI](https://pydantic.dev/docs/ai/llms.txt)，接入高德地图与[飞猪 Skill](https://github.com/alibaba-flyai/flyai-skill)。
 开发前请阅读 [AGENTS.md](AGENTS.md)，飞猪上游文件来源见 [skills/UPSTREAM.md](skills/UPSTREAM.md)。
 
-前端开发时，在两个终端分别启动上面的后端命令和：
+本地开发需要 Python 3.12+、uv、Node.js 22.12+ 和 npm。安装依赖并配置 `.env`：
 
 ```bash
+uv sync
+npm install -g @fly-ai/flyai-cli@1.0.16
+npm --prefix frontend ci
+```
+
+后端模块保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
+`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`。
+
+分别在两个终端启动后端和前端：
+
+```bash
+uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
 npm --prefix frontend run dev
 ```
 
-打开 Vite 在终端打印的地址（通常为 `http://127.0.0.1:5173`），支持热更新。
-FastAPI 接口文档位于 `http://127.0.0.1:7932/docs`。
+打开 Vite 打印的地址（通常为 `http://127.0.0.1:5173`）。
+API 文档位于 `http://127.0.0.1:7932/docs`。
+本地开发默认数据库为 `data/travel.db`，可通过 `DATABASE_PATH` 修改。
+若需由本地后端托管前端，先执行 `npm --prefix frontend run build`。
 
 运行离线测试：
 

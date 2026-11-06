@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+.venv
+**/__pycache__
+.pytest_cache
+.pydantic-ai-harness
+data
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+**/*.tsbuildinfo
+tests
+.agents
+.codex
+.aws

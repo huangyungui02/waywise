@@ -8,7 +8,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
-from server import create_backend
+from app import create_app as create_backend
 from settings import Settings
 from trip import TripStore
 

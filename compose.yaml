@@ -1,0 +1,16 @@
+services:
+  travel-agent:
+    build: .
+    ports:
+      - "127.0.0.1:7932:7932"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /app/data/travel.db
+    volumes:
+      - travel-data:/app/data
+    restart: unless-stopped
+    init: true
+
+volumes:
+  travel-data:

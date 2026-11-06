@@ -9,8 +9,8 @@ from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import SqliteConversationStore
 from starlette.testclient import TestClient
 
-import app
-from server import create_backend
+import agent as agent_module
+from app import create_app
 from settings import Settings
 from trip import Trip, TripStore
 from test_app import configured  # noqa: F401
@@ -35,9 +35,9 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
         seen.append(messages)
         yield "可以，先聊聊需求。"
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(stream_function=model)):
-        with TestClient(create_backend(settings, agent)) as client:
+        with TestClient(create_app(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             other = client.post("/api/conversations").json()["id"]
             assert (
@@ -52,7 +52,7 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
             assert history["summary"]["title"] == "去杭州"
             assert client.get(f"/api/conversations/{other}").json()["messages"] == []
         # 新应用实例从同一个文件恢复，而非复用内存。
-        with TestClient(create_backend(settings, agent)) as client:
+        with TestClient(create_app(settings, agent)) as client:
             body = request("住哪里")
             body["messages"].insert(
                 0,
@@ -96,7 +96,7 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
 
 def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
     settings = Settings(database_path=tmp_path / "travel.db")
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     count = 0
 
     async def model(messages, info):
@@ -116,7 +116,7 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
             yield "交通住宿已确认。"
 
     with agent.override(model=FunctionModel(stream_function=model)):
-        with TestClient(create_backend(settings, agent)) as client:
+        with TestClient(create_app(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("确认安排")
@@ -142,7 +142,7 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
             )
 
         asyncio.run(check_snapshots())
-        with TestClient(create_backend(settings, agent)) as client:
+        with TestClient(create_app(settings, agent)) as client:
             restored = client.get(f"/api/conversations/{cid}").json()
             assert restored["trip"] == data["trip"]
             assert restored["summary"]["outcome"] == "cancelled"
@@ -158,9 +158,9 @@ def test_failed_run_retains_question_and_marks_interrupted(configured, tmp_path)
         raise RuntimeError("测试中断")
         yield ""
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(stream_function=broken)):
-        with TestClient(create_backend(settings, agent)) as client:
+        with TestClient(create_app(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("查询杭州")
@@ -174,7 +174,7 @@ def test_failed_run_retains_question_and_marks_interrupted(configured, tmp_path)
 
 def test_stale_running_session_recovers_after_restart(configured, tmp_path):
     settings = Settings(database_path=tmp_path / "travel.db")
-    backend = create_backend(settings)
+    backend = create_app(settings)
     with TestClient(backend) as client:
         cid = client.post("/api/conversations").json()["id"]
 
@@ -186,7 +186,7 @@ def test_stale_running_session_recovers_after_restart(configured, tmp_path):
         )
 
     asyncio.run(mark_running())
-    with TestClient(create_backend(settings)) as client:
+    with TestClient(create_app(settings)) as client:
         assert (
             client.get(f"/api/conversations/{cid}").json()["summary"]["outcome"]
             == "cancelled"

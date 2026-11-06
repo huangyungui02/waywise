@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 
-import app
+import agent as agent_module
 from trip import Trip, TripStore
 from test_app import configured  # noqa: F401
 
@@ -88,7 +88,7 @@ def test_transport_schema(itinerary):
 
 def test_confirmation_tool_and_conversation_isolation(configured, itinerary):
     store = TripStore()
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
 
     def model(messages, info):
         if messages[-1].parts[0].part_kind == "tool-return":
@@ -117,7 +117,7 @@ def test_time_is_a_tool(configured):
             return ModelResponse(parts=[ToolCallPart(name, {})])
         return ModelResponse(parts=[TextPart("完成")])
 
-    agent = app.create_agent()
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
         result = agent.run_sync("现在是北京时间几点？")
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
