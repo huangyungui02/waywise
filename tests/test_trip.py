@@ -6,10 +6,10 @@ import pytest
 from pydantic import ValidationError
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
+from test_app import configured  # noqa: F401
 
 import agent as agent_module
 from trip import Trip, TripStore
-from test_app import configured  # noqa: F401
 
 
 @pytest.fixture

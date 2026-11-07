@@ -8,13 +8,13 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import SqliteConversationStore
 from starlette.testclient import TestClient
+from test_app import configured  # noqa: F401
+from test_trip import itinerary  # noqa: F401
 
 import agent as agent_module
 from app import create_app
 from settings import Settings
 from trip import Trip, TripStore
-from test_app import configured  # noqa: F401
-from test_trip import itinerary  # noqa: F401
 
 
 def request(text):

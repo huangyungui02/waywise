@@ -8,12 +8,12 @@ test("新建、发送、工具展示、刷新恢复、切换与删除", async ({
     path: "/private/tmp/travel-agent-welcome.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "开始规划" }).click();
+  await page.getByRole("button", { name: "开始一段旅行" }).click();
   await expect(page).toHaveURL(/\/chat\//);
   const firstUrl = page.url();
   const prompt = `去杭州 ${Date.now()}`;
   await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: /^(发送|开始规划)$/ }).click();
   await expect(page.getByText(`收到你的旅行想法：${prompt}。`)).toBeVisible();
   await expect(page.getByText("核对北京时间")).toBeVisible();
   await page.getByRole("button", { name: /核对北京时间/ }).click();
@@ -25,7 +25,7 @@ test("新建、发送、工具展示、刷新恢复、切换与删除", async ({
   await expect(page.getByText(`收到你的旅行想法：${prompt}。`)).toBeVisible();
   await page.getByRole("button", { name: "开始一段旅行" }).click();
   await expect(
-    page.getByRole("heading", { name: "说说这次旅行吧。" }),
+    page.getByRole("textbox", { name: "旅行需求" }),
   ).toBeVisible();
   await page.getByRole("link", { name: new RegExp(prompt) }).click();
   await expect(page).toHaveURL(firstUrl);
@@ -44,9 +44,11 @@ test("新建、发送、工具展示、刷新恢复、切换与删除", async ({
 test("手机界面可输入、发送和读取历史，页面没有横向溢出", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("开始旅行");
   await page.getByRole("button", { name: "开始规划" }).click();
+  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
   await page.getByRole("textbox", { name: "旅行需求" }).fill("我想去重庆");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: /^(发送|开始规划)$/ }).click();
   await expect(page.getByText("收到你的旅行想法：我想去重庆。")).toBeVisible();
   await page.reload();
   await expect(page.getByText("收到你的旅行想法：我想去重庆。")).toBeVisible();
@@ -63,9 +65,11 @@ test("手机界面可输入、发送和读取历史，页面没有横向溢出",
 
 test("停止生成后仍能读取已保存记录并继续聊天", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("开始旅行");
   await page.getByRole("button", { name: "开始规划" }).click();
+  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
   await page.getByRole("textbox", { name: "旅行需求" }).fill("停止测试");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: /^(发送|开始规划)$/ }).click();
   await expect(page.getByText("正在安排这次旅行…")).toBeVisible();
   await page.getByRole("button", { name: "停止" }).click();
   await page.reload();
@@ -73,50 +77,36 @@ test("停止生成后仍能读取已保存记录并继续聊天", async ({ page 
     page.getByText("停止测试", { exact: true }).last(),
   ).toBeVisible();
   await page.getByRole("textbox", { name: "旅行需求" }).fill("继续聊杭州");
-  await page.getByRole("button", { name: "发送" }).click();
+  await page.getByRole("button", { name: /^(发送|开始规划)$/ }).click();
   await expect(page.getByText("收到你的旅行想法：继续聊杭州。")).toBeVisible();
 });
 
-test("手机抽屉可查看旅行安排、切换历史，并保留输入", async ({ page }) => {
+test("表单合并发送，刷新恢复摘要，修改需求和手机布局", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: "周末，去附近走走" }).click();
-  const input = page.getByRole("textbox", { name: "旅行需求" });
-  await expect(input).toHaveValue(
-    "想找个周末坐高铁去附近城市玩两三天，帮我一起选个目的地。",
-  );
-  await page.getByRole("button", { name: "旅行安排" }).click();
+  await page.getByLabel("出发城市", { exact: true }).fill("上海");
+  await page.getByLabel("目的城市", { exact: true }).fill("杭州");
+  await page.getByLabel("出发日期", { exact: true }).fill("2026-12-01");
+  await page.getByLabel("返回日期", { exact: true }).fill("2026-12-03");
+  await page.getByLabel("成人", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "慢节奏", exact: true }).click();
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("想住湖边");
+  await page.getByRole("button", { name: "开始规划" }).click();
+  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
+  await expect(page.getByText(/上海 → 杭州/)).toBeVisible();
+  await expect(page.getByLabel("出发城市", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "修改需求" }).click();
+  await expect(page.getByLabel("目的城市", { exact: true })).toHaveValue("杭州");
+  await expect(page.getByRole("button", { name: "慢节奏", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("目的城市", { exact: true }).fill("苏州");
+  await page.getByRole("button", { name: "发送修改" }).click();
+  await expect(page.getByText(/上海 → 苏州/)).toBeVisible();
+  await page.getByRole("button", { name: "旅行安排", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(
-    page.getByRole("dialog").getByText("好行程，从容安排"),
-  ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(input).toBeVisible();
-  await page.getByRole("button", { name: "打开旅行列表" }).click();
-  await expect(
-    page.getByRole("navigation", { name: "我的旅行" }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(input).toHaveValue(
-    "想找个周末坐高铁去附近城市玩两三天，帮我一起选个目的地。",
-  );
-  const firstUrl = page.url();
-  await page.getByRole("button", { name: "发送" }).click();
-  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
-  await page.getByRole("button", { name: "打开旅行列表" }).click();
-  await page.getByRole("button", { name: "开始一段旅行" }).click();
-  await expect(
-    page.getByRole("heading", { name: "说说这次旅行吧。" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "打开旅行列表" }).click();
-  await page.getByRole("link", { name: /想找个周末坐高铁/ }).click();
-  await expect(page).toHaveURL(firstUrl);
-  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "/private/tmp/travel-agent-mobile.png", fullPage: true });
 });
 
 for (const mobile of [false, true]) {
@@ -125,7 +115,9 @@ for (const mobile of [false, true]) {
   }) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    await page.getByRole("button", { name: "开始规划" }).click();
+    await page.getByRole("textbox", { name: "旅行需求" }).fill("开始旅行");
+  await page.getByRole("button", { name: "开始规划" }).click();
+  await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
     await expect(page).toHaveURL(/\/chat\//);
     const leg = {
       type: "train",

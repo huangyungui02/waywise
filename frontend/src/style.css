@@ -8,8 +8,8 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-serif: "Songti SC", "STSong", ui-serif, serif;
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", "SimSun", serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -51,82 +51,105 @@
 }
 
 :root {
-  --background: #faf9f5;
-  --foreground: #1f1e1b;
+  --background: #f8f7f4;
+  --foreground: #181b19;
   --card: #ffffff;
-  --card-foreground: #1f1e1b;
+  --card-foreground: #181b19;
   --popover: #ffffff;
-  --popover-foreground: #1f1e1b;
-  --primary: #2d5a4c;
+  --popover-foreground: #181b19;
+  --primary: #19382e;
   --primary-foreground: #ffffff;
-  --secondary: #f0eee8;
-  --secondary-foreground: #2c2a26;
-  --muted: #f3f1ec;
-  --muted-foreground: #78756e;
-  --accent: #ebe8e0;
-  --accent-foreground: #1f1e1b;
+  --secondary: #eeeae0;
+  --secondary-foreground: #1f2321;
+  --muted: #eae6db;
+  --muted-foreground: #828780;
+  --accent: #e4ded1;
+  --accent-foreground: #181b19;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e7e4dc;
-  --input: #e7e4dc;
-  --ring: #2d5a4c;
+  --border: transparent;
+  --input: transparent;
+  --ring: #19382e;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: #f3f1ec;
-  --sidebar-foreground: #2c2a26;
-  --sidebar-primary: #2d5a4c;
+  --sidebar: #f2eee5;
+  --sidebar-foreground: #1f2321;
+  --sidebar-primary: #19382e;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e9e6de;
-  --sidebar-accent-foreground: #1f1e1b;
-  --sidebar-border: #e7e4dc;
-  --sidebar-ring: #2d5a4c;
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-accent: #e5ded0;
+  --sidebar-accent-foreground: #181b19;
+  --sidebar-border: transparent;
+  --sidebar-ring: #19382e;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-transparent outline-none;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground antialiased selection:bg-primary/10 selection:text-primary;
+    background: radial-gradient(circle at 15% 15%, #faf8f3 0%, transparent 45%),
+                radial-gradient(circle at 85% 85%, #f1f4f1 0%, transparent 45%),
+                #f7f5ef;
+    min-height: 100vh;
   }
   html {
     @apply font-sans;
+  }
+
+  /* 消除数字上下微调小箭头 */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* 极简日期控件 */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.3;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 0.7;
+  }
+}
+
+@layer components {
+  /* Arc 悬浮主画布：极其纯净的无边框轻盈视口 */
+  .arc-window {
+    @apply relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white/80 backdrop-blur-3xl transition-all duration-300;
+    box-shadow: 0 20px 50px -12px rgba(25, 30, 25, 0.05),
+                inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
+  }
+
+  /* 极致纯净液态玻璃胶囊 */
+  .pure-capsule {
+    @apply rounded-xl bg-white/70 backdrop-blur-2xl transition-all duration-200;
+    box-shadow: 0 10px 30px -4px rgba(20, 25, 20, 0.04),
+                inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  /* 极简灵动药丸标签 */
+  .pure-pill {
+    @apply inline-flex items-center rounded-lg bg-white/60 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-md transition-all duration-150 hover:bg-white hover:text-foreground active:scale-[0.98];
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+  }
+  .pure-pill-active {
+    @apply bg-primary text-white font-medium hover:bg-primary/95 hover:text-white shadow-xs;
+  }
+
+  /* 纯净流体输入框：告别传统边框，温润微底色 */
+  .pure-field {
+    @apply h-10 w-full rounded-xl bg-black/[0.025] px-3.5 text-sm text-foreground transition-all duration-150 placeholder:text-muted-foreground/40 hover:bg-black/[0.04] focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10;
+  }
+  .pure-select {
+    @apply h-10 w-full rounded-xl bg-black/[0.025] px-3.5 text-sm text-foreground transition-all duration-150 placeholder:text-muted-foreground/40 hover:bg-black/[0.04] focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23828780%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-8 cursor-pointer;
   }
 }
