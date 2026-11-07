@@ -8,7 +8,6 @@ import {
   MapPin,
   Plane,
   Route,
-  ShieldCheck,
   TrainFront,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,7 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 font-serif text-sm font-medium tracking-wide text-foreground">
           <Route className="size-3.5 text-primary" />
-          <span>基础安排 · 行囊</span>
+          <span>基础安排</span>
         </h3>
         <Badge
           variant={trip ? "secondary" : "outline"}
@@ -217,12 +216,6 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
           )}
         </>
       )}
-
-      {/* 底部声明 */}
-      <div className="flex items-start gap-2 rounded-xl bg-white/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground/60">
-        <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" />
-        <span>确认方案不代表已经购买。请前往预订页面自行核对并支付。</span>
-      </div>
     </div>
   );
 }

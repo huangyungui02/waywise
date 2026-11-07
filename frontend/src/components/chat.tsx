@@ -6,8 +6,6 @@ import {
   ArrowDown,
   ArrowUp,
   CircleAlert,
-  Compass,
-  Edit3,
   LoaderCircle,
   Route,
   Square,
@@ -26,25 +24,17 @@ import {
 import type { Detail } from "@/api";
 import { Message } from "./message";
 import { TripPanel } from "./trip-panel";
-import { TravelForm, readBrief } from "./travel-form";
+import { TravelForm } from "./travel-form";
 
 export function ChatRoute() {
   const detail = useLoaderData() as Detail;
   return <Chat key={detail.summary.id} detail={detail} />;
 }
 
-function formatTitle(title: string): string {
-  if (title.startsWith("这次旅行的想法：")) {
-    return "知途 · 旅行手札";
-  }
-  return title;
-}
-
 function Chat({ detail }: { detail: Detail }) {
   const revalidator = useRevalidator();
   const location = useLocation();
   const [text, setText] = useState("");
-  const [editing, setEditing] = useState(false);
   const initialSent = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -83,14 +73,6 @@ function Chat({ detail }: { detail: Detail }) {
     return result;
   }, [messages]);
 
-  const briefText = [...displayMessages]
-    .reverse()
-    .filter((m) => m.role === "user")
-    .flatMap((m) => m.parts)
-    .find((p) => p.type === "text" && readBrief(p.text));
-  const brief =
-    briefText?.type === "text" ? readBrief(briefText.text) : undefined;
-
   useEffect(() => {
     const prompt = (location.state as { prompt?: string } | null)?.prompt;
     if (!initialSent.current && !detail.messages.length && prompt) {
@@ -122,21 +104,9 @@ function Chat({ detail }: { detail: Detail }) {
     await sendMessage({ text: input });
   }
 
-  const cleanTitle = formatTitle(detail.summary.title);
-
   return (
     <>
-      {/* 极简无界毛玻璃导航 */}
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 bg-white/50 px-6 backdrop-blur-xl sm:px-8">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Compass className="size-3.5" />
-          </span>
-          <h1 className="truncate font-serif text-sm font-medium tracking-wide text-foreground">
-            {cleanTitle}
-          </h1>
-        </div>
-
+      <div className="flex shrink-0 items-center justify-end px-4 py-2 sm:px-8 xl:hidden">
         {/* 移动端安排抽屉入口 */}
         <Sheet>
           <SheetTrigger asChild>
@@ -163,41 +133,7 @@ function Chat({ detail }: { detail: Detail }) {
             </div>
           </SheetContent>
         </Sheet>
-      </header>
-
-      {/* 纯净意境摘要条 (Brief Bar) */}
-      {brief && (
-        <div className="flex items-center justify-between gap-3 bg-white/35 px-6 py-2.5 text-xs backdrop-blur-md sm:px-8">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 rounded-full bg-primary/80" />
-            <span className="truncate text-muted-foreground">
-              <strong className="font-medium text-foreground">
-                {[brief["出发城市"], brief["目的城市"]].filter(Boolean).join(" → ") ||
-                  "旅行心愿"}
-              </strong>
-              {" · "}
-              {brief["出发日期"] || "日期待定"}
-              {brief["返回日期"] ? ` — ${brief["返回日期"]}` : ""}
-              {brief["成人"] ? ` · ${brief["成人"]}位成人` : ""}
-              {brief["老人"] ? ` · ${brief["老人"]}位老人` : ""}
-              {brief["儿童"] ? ` · ${brief["儿童"]}位儿童` : ""}
-              {brief["预算金额"]
-                ? ` · ¥${brief["预算金额"]}（${brief["预算口径"] || "口径待定"}）`
-                : ""}
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={running}
-            onClick={() => setEditing((v) => !v)}
-            className="h-7 shrink-0 gap-1 rounded-full px-2.5 text-xs text-primary hover:bg-primary/10"
-          >
-            <Edit3 className="size-3" />
-            修改需求
-          </Button>
-        </div>
-      )}
+      </div>
 
       {/* 核心双栏视口 */}
       <div className="flex min-h-0 min-w-0 flex-1">
@@ -214,13 +150,10 @@ function Chat({ detail }: { detail: Detail }) {
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8"
           >
             <div className="mx-auto max-w-2xl space-y-6 py-6 sm:py-8">
-              {(!displayMessages.length || editing) && (
+              {!displayMessages.length && (
                 <TravelForm
-                  initial={brief}
                   busy={running}
-                  onCancel={editing ? () => setEditing(false) : undefined}
                   onSubmit={(input) => {
-                    setEditing(false);
                     void sendMessage({ text: input });
                   }}
                 />
@@ -263,13 +196,13 @@ function Chat({ detail }: { detail: Detail }) {
             </div>
           </div>
 
-          {/* 回到最新按钮：隐于右下角 */}
+          {/* 回到最新消息 */}
           {!atBottom && (
             <Button
               variant="outline"
               size="icon"
               aria-label="回到最新消息"
-              className="absolute bottom-24 right-6 size-8 rounded-full bg-white/90 shadow-md backdrop-blur-md hover:bg-white sm:right-10"
+              className="absolute bottom-24 left-1/2 -translate-x-1/2 size-8 rounded-full bg-white/90 shadow-md backdrop-blur-md hover:bg-white"
               onClick={() => {
                 setAtBottom(true);
                 if (scroller.current) {
@@ -282,7 +215,7 @@ function Chat({ detail }: { detail: Detail }) {
           )}
 
           {/* 极致纯净：单行悬浮液态玻璃输入胶囊（无下划线分割，无键盘说教，纯粹单图标） */}
-          {!!displayMessages.length && !editing && (
+          {!!displayMessages.length && (
             <div className="shrink-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pb-6">
               <form
                 onSubmit={submit}

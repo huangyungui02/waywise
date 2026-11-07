@@ -46,18 +46,14 @@ export function readBrief(text: string): Record<string, string> | undefined {
 }
 
 export function TravelForm({
-  initial = {},
   busy = false,
   onSubmit,
-  onCancel,
 }: {
-  initial?: Record<string, string>;
   busy?: boolean;
   onSubmit: (text: string) => void;
-  onCancel?: () => void;
 }) {
-  const [values, setValues] = useState<Record<string, string>>(initial);
-  const [note, setNote] = useState(initial["补充想法"] || "");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [note, setNote] = useState("");
 
   const update = (key: string, value: string) =>
     setValues((v) => ({ ...v, [key]: value }));
@@ -324,23 +320,13 @@ export function TravelForm({
 
       {/* 底部极简操作 */}
       <div className="flex items-center justify-end gap-2 pt-2">
-        {onCancel && (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onCancel}
-            className="rounded-full px-4 text-xs text-muted-foreground hover:text-foreground"
-          >
-            取消
-          </Button>
-        )}
         <Button
           disabled={!hasInput || busy}
           className="gap-2 rounded-full bg-primary px-6 text-xs text-white shadow-xs hover:bg-primary/95 active:scale-95 transition-all"
           type="submit"
         >
           {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
-          {onCancel ? "发送修改" : "开始规划"}
+          开始规划
           <ArrowUpRight className="size-3.5" />
         </Button>
       </div>

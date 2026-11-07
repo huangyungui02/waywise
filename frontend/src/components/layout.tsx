@@ -145,7 +145,6 @@ export function Layout() {
       {/* 旅程列表 */}
       <div className="mb-2 mt-7 flex items-center justify-between px-2 text-[10px] font-medium tracking-wider text-muted-foreground/70 uppercase font-mono">
         <span>我的旅行</span>
-        {conversations.length > 0 && <span>{conversations.length}</span>}
       </div>
 
       <nav
@@ -196,13 +195,6 @@ export function Layout() {
           </div>
         ))}
       </nav>
-
-      {/* 底部人文小脚标 */}
-      <div className="mt-auto pt-4 px-2">
-        <p className="font-serif text-[11px] tracking-widest text-muted-foreground/50">
-          山水有信 · 知途相伴
-        </p>
-      </div>
     </div>
   );
 

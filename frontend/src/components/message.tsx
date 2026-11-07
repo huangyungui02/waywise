@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
 import Markdown from "react-markdown";
@@ -5,17 +6,10 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowRight,
   Check,
-  ChevronDown,
   CircleAlert,
-  Compass,
   LoaderCircle,
   Sparkles,
 } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { readBrief } from "./travel-form";
 
@@ -27,6 +21,45 @@ const toolNames: Record<string, string> = {
   call_flyai: "查询交通与酒店",
   web_search: "搜索旅行资讯",
 };
+
+function ToolActivityGroup({ children, count }: { children: ReactNode; count: number }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || !content.current) return;
+    const scrollToBottom = () => { element.scrollTop = element.scrollHeight; };
+    scrollToBottom();
+    const observer = new ResizeObserver(scrollToBottom);
+    observer.observe(content.current);
+    return () => observer.disconnect();
+  });
+
+  return (
+    <div
+      ref={scroller}
+      role="region"
+      aria-label="行程查询记录"
+      className={cn(
+        "my-1.5 rounded-xl",
+        count > 1
+          ? "bg-black/[0.02] p-2.5 max-h-36 overflow-y-auto overscroll-contain space-y-1"
+          : "space-y-1",
+      )}
+    >
+      <div ref={content} className="space-y-1">
+      {count > 1 && (
+        <div className="mb-1 flex items-center justify-between px-1 text-[10px] text-muted-foreground/60 font-mono uppercase">
+          <span>行程查询记录</span>
+          <span>{count} 项</span>
+        </div>
+      )}
+      {children}
+      </div>
+    </div>
+  );
+}
 
 export function Message({ message }: { message: UIMessage }) {
   const user = message.role === "user";
@@ -66,10 +99,7 @@ export function Message({ message }: { message: UIMessage }) {
                   <div className="flex items-center justify-between text-xs text-muted-foreground/70">
                     <span className="flex items-center gap-1.5 font-serif font-medium text-primary">
                       <Sparkles className="size-3.5 text-primary" />
-                      旅行心愿
-                    </span>
-                    <span className="font-mono text-[9px] tracking-widest uppercase">
-                      TRIP INTENT
+                      旅行计划
                     </span>
                   </div>
 
@@ -118,7 +148,7 @@ export function Message({ message }: { message: UIMessage }) {
             return (
               <div
                 key={i}
-                className="rounded-xl rounded-tr-xs bg-[#19382e]/90 text-white backdrop-blur-md px-4 py-2.5 text-sm leading-relaxed shadow-2xs break-words"
+                className="rounded-xl rounded-tr-xs bg-[#19382e]/90 text-white selection:bg-[#d9eee3] selection:text-[#19382e] backdrop-blur-md px-4 py-2.5 text-sm leading-relaxed shadow-2xs break-words"
               >
                 {part.text}
               </div>
@@ -149,12 +179,7 @@ export function Message({ message }: { message: UIMessage }) {
   });
 
   return (
-    <article className="flex gap-3.5 sm:gap-4">
-      {/* 助手印章 */}
-      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary shadow-2xs">
-        <Compass className="size-3.5" strokeWidth={1.8} />
-      </div>
-
+    <article>
       <div className="min-w-0 flex-1 space-y-2">
         {groups.map((group, groupIdx) => {
           if (group.type === "text") {
@@ -195,25 +220,8 @@ export function Message({ message }: { message: UIMessage }) {
           }
 
           if (group.type === "tools") {
-            const hasMultiple = group.tools.length > 1;
-
             return (
-              <div
-                key={groupIdx}
-                className={cn(
-                  "my-1.5 rounded-xl transition-all",
-                  hasMultiple
-                    ? "bg-black/[0.02] p-2.5 max-h-36 overflow-y-auto overscroll-contain space-y-1"
-                    : "space-y-1",
-                )}
-              >
-                {hasMultiple && (
-                  <div className="mb-1 flex items-center justify-between px-1 text-[10px] text-muted-foreground/60 font-mono uppercase">
-                    <span>行程查询记录</span>
-                    <span>{group.tools.length} 项</span>
-                  </div>
-                )}
-
+              <ToolActivityGroup key={groupIdx} count={group.tools.length}>
                 {group.tools.map(({ part, key }) => {
                   if (!isToolUIPart(part)) return null;
                   const name =
@@ -222,16 +230,9 @@ export function Message({ message }: { message: UIMessage }) {
                       : part.type.slice(5);
                   const finished = part.state === "output-available";
                   const failed = part.state === "output-error";
-                  const payload =
-                    "output" in part
-                      ? part.output
-                      : "errorText" in part
-                        ? part.errorText
-                        : part.input;
-
                   return (
-                    <Collapsible key={key} className="my-0.5">
-                      <CollapsibleTrigger className="group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-left text-[11px] text-muted-foreground/75 hover:bg-black/[0.04] hover:text-foreground transition-colors">
+                    <div key={key}>
+                      <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-left text-[11px] text-muted-foreground/75">
                         {failed ? (
                           <CircleAlert className="size-3 shrink-0 text-destructive" />
                         ) : finished ? (
@@ -250,19 +251,11 @@ export function Message({ message }: { message: UIMessage }) {
                         <span className="text-[10px] text-muted-foreground/50">
                           {failed ? "未完成" : finished ? "已完成" : "进行中"}
                         </span>
-                        <ChevronDown className="size-2.5 text-muted-foreground/40 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="mt-1 max-w-xl rounded-xl bg-white/80 p-3 shadow-2xs backdrop-blur-md">
-                          <pre className="max-h-40 overflow-auto text-[11px] leading-relaxed text-muted-foreground font-mono">
-                            {JSON.stringify(payload, null, 2)}
-                          </pre>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
+                      </div>
+                    </div>
                   );
                 })}
-              </div>
+              </ToolActivityGroup>
             );
           }
 
