@@ -7,7 +7,13 @@ import subprocess
 import httpx2
 import pytest
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import (
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai.toolsets import FunctionToolset
 from starlette.testclient import TestClient
@@ -18,6 +24,32 @@ from settings import Settings
 
 @pytest.fixture
 def configured(monkeypatch):
+    import app
+    from pydantic_ai.direct import model_request
+
+    async def local_title_request(model, messages, **kwargs):
+        return await model_request(
+            FunctionModel(
+                lambda messages, info: ModelResponse(
+                    parts=[
+                        TextPart(
+                            str(
+                                next(
+                                    p.content
+                                    for m in messages
+                                    for p in m.parts
+                                    if isinstance(p, UserPromptPart)
+                                )
+                            )
+                        )
+                    ]
+                )
+            ),
+            messages,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(app, "model_request", local_title_request)
     monkeypatch.setenv("AMAP_MAPS_API_KEY", "test-key")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
     monkeypatch.setenv("TRAVEL_MODEL", "qwen3.8-flash")

@@ -3,6 +3,9 @@
 import asyncio
 from dataclasses import replace
 
+import pytest
+from pydantic_ai.direct import model_request
+from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.messages import UserPromptPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai_harness.step_persistence import SqliteStepStore
@@ -15,6 +18,55 @@ import agent as agent_module
 from app import create_app
 from settings import Settings
 from trip import Trip, TripStore
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_first_reply_names_conversation_without_thinking(
+    configured, monkeypatch, tmp_path, fails
+):
+    import app
+
+    calls = []
+
+    def title(messages, info):
+        return ModelResponse(parts=[TextPart("成都至四姑娘山双人游")])
+
+    async def naming(model, messages, **kwargs):
+        calls.append((messages, kwargs))
+        if fails:
+            raise RuntimeError("本地标题服务失败")
+        return await model_request(model, messages, **kwargs)
+
+    async def reply(messages, info):
+        yield "请告诉我出发日期。"
+
+    monkeypatch.setattr(app, "model_request", naming)
+    agent = agent_module.create_agent()
+    with agent.override(model=FunctionModel(stream_function=reply)):
+        with TestClient(
+            create_app(
+                Settings(database_path=tmp_path / "naming.db"),
+                agent,
+                title_model=FunctionModel(title),
+            )
+        ) as client:
+            cid = client.post("/api/conversations").json()["id"]
+            prompt = "这次旅行的想法：\n出发城市：成都\n目的城市：四姑娘山\n同行人数：2"
+            client.post(f"/api/conversations/{cid}/chat", json=request(prompt))
+            detail = client.get(f"/api/conversations/{cid}").json()
+            assert detail["summary"]["title"] == (
+                prompt[:40] if fails else "成都至四姑娘山双人游"
+            )
+            assert detail["summary"]["outcome"] == "completed"
+            assert calls[0][1]["model_settings"]["extra_body"] == {
+                "enable_thinking": False
+            }
+            client.post(f"/api/conversations/{cid}/chat", json=request("下周出发"))
+            assert len(calls) == 1
+            assert (
+                client.get(f"/api/conversations/{cid}").json()["summary"]["title"]
+                == detail["summary"]["title"]
+            )
 
 
 def request(text):

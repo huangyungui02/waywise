@@ -307,6 +307,8 @@ for (const mobile of [false, true]) {
       }
       await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
       await expect(page.locator("article").first()).toContainText("四姑娘山");
+      await expect(page.getByText("旅行计划", { exact: true })).toHaveCount(0);
+      await expect(page.locator('a[aria-current="page"]')).toContainText("四姑娘山旅行");
       if (newConversation) await expect(page.locator("article").first()).toContainText("想坐大巴");
       await expect(card).toHaveCount(0);
       await expect(composer).toBeInViewport();

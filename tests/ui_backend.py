@@ -5,7 +5,7 @@ from pathlib import Path
 
 import anyio
 from pydantic_ai import Agent, RunContext, ToolOutput
-from pydantic_ai.messages import UserPromptPart
+from pydantic_ai.messages import ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
 from app import create_app as create_backend
@@ -96,6 +96,25 @@ def current_time() -> str:
 
 
 def create_app():
+    def title(messages, info):
+        prompt = str(
+            next(
+                p.content
+                for m in messages
+                for p in m.parts
+                if isinstance(p, UserPromptPart)
+            )
+        )
+        return ModelResponse(
+            parts=[
+                TextPart(
+                    prompt
+                    if not prompt.startswith("这次旅行的想法：")
+                    else "四姑娘山旅行"
+                )
+            ]
+        )
+
     return create_backend(
         Settings(
             _env_file=None,
@@ -105,4 +124,5 @@ def create_app():
             logfire_token="",
         ),
         agent,
+        title_model=FunctionModel(title),
     )

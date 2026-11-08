@@ -8,7 +8,6 @@ import {
   Check,
   CircleAlert,
   LoaderCircle,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Detail, Trip } from "@/api";
@@ -95,15 +94,8 @@ export function Message({ message, detail, busy, onConfirm }: { message: UIMessa
                   key={i}
                   className="pure-capsule relative overflow-hidden p-5 text-foreground sm:p-6"
                 >
-                  <div className="flex items-center justify-between text-xs text-muted-foreground/70">
-                    <span className="flex items-center gap-1.5 font-serif font-medium text-primary">
-                      <Sparkles className="size-3.5 text-primary" />
-                      旅行计划
-                    </span>
-                  </div>
-
                   {route && (
-                    <div className="mt-3 flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5">
                       <span className="font-serif text-xl font-medium tracking-tight text-foreground sm:text-2xl">
                         {brief["出发城市"] || "出发地"}
                       </span>

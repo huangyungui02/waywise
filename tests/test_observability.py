@@ -7,7 +7,7 @@ import pytest
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic_ai import Agent
-from pydantic_ai.messages import ToolReturnPart
+from pydantic_ai.messages import ModelResponse, TextPart, ToolReturnPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from starlette.testclient import TestClient
 
@@ -61,7 +61,15 @@ def test_request_agent_tool_trace_and_content(monkeypatch, tmp_path, include_con
         logfire_include_content=include_content,
     )
     assert "test-write-token" not in repr(settings)
-    with TestClient(app.create_app(settings, agent)) as client:
+    with TestClient(
+        app.create_app(
+            settings,
+            agent,
+            title_model=FunctionModel(
+                lambda messages, info: ModelResponse(parts=[TextPart("测试旅行")])
+            ),
+        )
+    ) as client:
         conversation_id = client.post("/api/conversations").json()["id"]
         body = {
             "id": conversation_id,

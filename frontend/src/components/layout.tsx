@@ -47,13 +47,6 @@ export type TravelActions = {
   creating: boolean;
 };
 
-function formatTitle(title: string): string {
-  if (title.startsWith("这次旅行的想法：")) {
-    return "旅行规划手札";
-  }
-  return title;
-}
-
 function Brand() {
   return (
     <Link
@@ -176,7 +169,7 @@ export function Layout() {
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs leading-5">
-                  {formatTitle(c.title)}
+                  {c.title}
                 </span>
                 <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground/60 font-mono">
                   {new Date(c.updated_at).toLocaleDateString("zh-CN")}
