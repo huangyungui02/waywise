@@ -6,7 +6,7 @@ from pathlib import Path
 import anyio
 from pydantic_ai import Agent, RunContext, ToolOutput
 from pydantic_ai.messages import UserPromptPart
-from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
 from app import create_app as create_backend
 from settings import Settings
@@ -23,6 +23,13 @@ async def stream(messages, info):
         if isinstance(p, UserPromptPart)
     )
     if isinstance(messages[-1].parts[-1], UserPromptPart):
+        if prompt == "思考测试":
+            yield {0: DeltaThinkingPart(content="这是不应展示的思考内容")}
+            await anyio.sleep(2)
+            yield "旅行建议已整理好。"
+            await anyio.sleep(2)
+            yield "接下来一起确定出发日期。"
+            return
         if str(prompt) in ("展示方案", "换酒店"):
             plan = Trip.model_validate(ITINERARY)
             if prompt == "换酒店":

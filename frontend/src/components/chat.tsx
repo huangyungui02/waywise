@@ -74,6 +74,9 @@ function Chat({ detail }: { detail: Detail }) {
   }, [location.state, detail.messages.length, sendMessage]);
 
   const running = status === "submitted" || status === "streaming";
+  const latestMessage = messages.at(-1);
+  const thinking = status === "streaming" && latestMessage?.role === "assistant" &&
+    latestMessage.parts.some((part) => part.type === "reasoning" && part.state === "streaming");
 
   useEffect(
     () => () => {
@@ -85,7 +88,7 @@ function Chat({ detail }: { detail: Detail }) {
   useEffect(() => {
     if (atBottom && scroller.current)
       scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [displayMessages, atBottom]);
+  }, [displayMessages, atBottom, thinking]);
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -128,13 +131,13 @@ function Chat({ detail }: { detail: Detail }) {
             </section>
           )}
 
-          {status === "submitted" && (
+          {thinking && (
             <div
               role="status"
               className="flex items-center gap-2 rounded-full bg-white/70 px-4 py-1.5 text-xs text-muted-foreground backdrop-blur-md w-fit shadow-xs"
             >
-              <LoaderCircle className="size-3 animate-spin text-primary" />
-              <span className="font-serif">正在整理你的旅行需求…</span>
+              <LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none text-primary" />
+              <span className="font-serif">正在思考…</span>
             </div>
           )}
 

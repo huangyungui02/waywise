@@ -1,5 +1,23 @@
 import { expect, test } from "@playwright/test";
 
+test("模型思考时显示动画并隐藏思考内容，正式输出时立即移除", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("思考测试");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const activity = page.getByRole("status").filter({ hasText: "正在思考…" });
+  await expect(activity).toBeVisible();
+  // reasoning 事件已到达并进入 streaming 状态，仍然保留提示。
+  await expect(page.locator("article")).toHaveCount(2);
+  await expect(activity).toBeVisible();
+  await expect(activity.locator("svg")).toHaveClass(/animate-spin/);
+  await expect(page.getByText("这是不应展示的思考内容")).toHaveCount(0);
+  await expect(page.getByText("旅行建议已整理好。")).toBeVisible();
+  await expect(activity).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeVisible();
+  await expect(page.getByText("接下来一起确定出发日期。", { exact: false })).toBeVisible();
+  await expect(activity).toHaveCount(0);
+});
+
 test("新建、发送、工具展示、刷新恢复、切换与删除", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -85,6 +103,7 @@ test("停止生成后仍能读取已保存记录并继续聊天", async ({ page 
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByText("正在安排这次旅行…")).toBeVisible();
   await page.getByRole("button", { name: "停止" }).click();
+  await expect(page.getByText("正在思考…", { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(
     page.getByText("停止测试", { exact: true }).last(),
