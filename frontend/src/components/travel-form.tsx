@@ -106,11 +106,11 @@ export function TravelForm({
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              出发城市
+              出发地
             </span>
             <input
               type="text"
-              placeholder="出发城市"
+              placeholder="出发地"
               value={values["出发城市"] || ""}
               onChange={(e) => update("出发城市", e.target.value)}
               className="pure-field"
@@ -118,7 +118,7 @@ export function TravelForm({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              目的城市
+              目的地
             </span>
             <input
               type="text"
@@ -251,6 +251,7 @@ export function TravelForm({
               <option value="都可以">都可以</option>
               <option value="高铁 / 火车">高铁 / 火车</option>
               <option value="飞机">飞机</option>
+              <option value="大巴 / 景区直通车">大巴 / 景区直通车</option>
             </select>
           </label>
           <label className="flex flex-col gap-1">

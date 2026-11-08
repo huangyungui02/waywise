@@ -1,23 +1,25 @@
-"""直达、单城市旅行的基础安排；只保存用户明确确认的方案。"""
+"""直达、单目的地旅行的基础安排；只保存用户明确确认的方案。"""
 
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, HttpUrl, NaiveDatetime
+from sqlalchemy import Text
+from sqlalchemy.engine import URL, Engine
+from sqlalchemy.pool import NullPool
+from sqlmodel import Field, Session, SQLModel, create_engine
 
 
 class Transport(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, str_min_length=1)
 
-    type: Literal["train", "flight"]
-    number: str
-    departure_city: str
-    arrival_city: str
-    departure_station: str
-    arrival_station: str
+    type: Literal["train", "flight", "bus"]
+    name: str
+    number: str | None = None
+    departure_point: str
+    arrival_point: str
     departure_time: NaiveDatetime
     arrival_time: NaiveDatetime
     purchase_url: HttpUrl | None = None
@@ -37,6 +39,10 @@ class Stay(BaseModel):
 
 
 class Trip(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, str_min_length=1)
+
+    origin: str
+    destination: str
     outbound: Transport
     inbound: Transport
     stays: list[Stay]
@@ -51,21 +57,15 @@ class Trip(BaseModel):
             < back.arrival_time
         ):
             issues.append("往返出发和抵达时间必须依次递增（全部使用北京时间）。")
-        if (
-            out.departure_city != back.arrival_city
-            or out.arrival_city != back.departure_city
-            or out.departure_city == out.arrival_city
-        ):
-            issues.append("仅支持单目的城市往返，回程城市方向须与去程相反。")
+        if self.origin == self.destination:
+            issues.append("出发地与目的地不能相同。")
         for leg in (out, back):
             if not leg.purchased and leg.purchase_url is None:
-                issues.append(f"{leg.number} 尚未购买，缺少购买链接。")
+                issues.append(f"{leg.name} 尚未购买，缺少购买链接。")
 
         first, last = out.arrival_time.date(), back.departure_time.date()
         nights: dict[date, int] = {}
         for stay in self.stays:
-            if stay.city != out.arrival_city:
-                issues.append(f"{stay.hotel} 不在目的城市。")
             if not (first <= stay.check_in < stay.check_out <= last):
                 issues.append(
                     f"{stay.hotel} 入住/退房日期须位于抵达日与返程出发日之间，且退房晚于入住。"
@@ -85,45 +85,56 @@ class Trip(BaseModel):
         return issues
 
 
+class TripRecord(SQLModel, table=True):
+    """数据库记录；完整旅行方案仍由 Trip 校验并序列化为 JSON。"""
+
+    __tablename__ = "trips"
+
+    conversation_id: str = Field(primary_key=True)
+    data: str = Field(sa_type=Text)
+
+
 @dataclass
 class TripStore:
     """按会话保存确认安排；配置 database 时持久化，测试默认使用内存。"""
 
     confirmed: dict[str, Trip] = field(default_factory=dict)
-
     database: Path | None = None
+    _engine: Engine | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
-        if self.database:
-            with sqlite3.connect(self.database) as conn:
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS trips (conversation_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
-                )
+        if self.database is not None:
+            # 与官方 Store 共用 SQLite 文件，每个 Session 结束后关闭连接。
+            self._engine = create_engine(
+                URL.create("sqlite", database=str(self.database)), poolclass=NullPool
+            )
+            SQLModel.metadata.create_all(self._engine)
 
     def save(self, conversation_id: str, trip: Trip) -> None:
-        if self.database is None:
+        if self._engine is None:
             self.confirmed[conversation_id] = trip
         else:
-            with sqlite3.connect(self.database) as conn:
-                conn.execute(
-                    "INSERT INTO trips VALUES (?, ?) ON CONFLICT(conversation_id) DO UPDATE SET data=excluded.data",
-                    (conversation_id, trip.model_dump_json()),
+            with Session(self._engine) as session:
+                session.merge(
+                    TripRecord(
+                        conversation_id=conversation_id, data=trip.model_dump_json()
+                    )
                 )
+                session.commit()
 
     def get(self, conversation_id: str) -> Trip | None:
-        if self.database is None:
+        if self._engine is None:
             return self.confirmed.get(conversation_id)
-        with sqlite3.connect(self.database) as conn:
-            row = conn.execute(
-                "SELECT data FROM trips WHERE conversation_id=?", (conversation_id,)
-            ).fetchone()
-        return Trip.model_validate_json(row[0]) if row else None
+        with Session(self._engine) as session:
+            record = session.get(TripRecord, conversation_id)
+            return Trip.model_validate_json(record.data) if record is not None else None
 
     def delete(self, conversation_id: str) -> None:
-        if self.database is None:
+        if self._engine is None:
             self.confirmed.pop(conversation_id, None)
         else:
-            with sqlite3.connect(self.database) as conn:
-                conn.execute(
-                    "DELETE FROM trips WHERE conversation_id=?", (conversation_id,)
-                )
+            with Session(self._engine) as session:
+                record = session.get(TripRecord, conversation_id)
+                if record is not None:
+                    session.delete(record)
+                    session.commit()

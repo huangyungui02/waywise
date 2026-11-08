@@ -28,7 +28,7 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
         ),
         name="国内旅行助手",
         deps_type=TripStore,
-        model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="none"),
+        model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
         capabilities=[
             WebSearch(),
@@ -114,7 +114,9 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
         """保存用户选定的往返交通和住宿，作为接下来安排每日游览的依据。
 
         先了解需求、补齐未订的交通和酒店，将完整方案展示给用户；用户明确同意后再调用。
-        trip 填写已选定的直达往返交通与全部酒店，时间使用不带时区的北京时间。
+        trip 填写整体出发地、目的地、已选定的直达往返交通与全部酒店。
+        提交前核实往返方向与酒店位置，交通填写具体上下车地点。
+        时间使用不带时区的北京时间，采用有依据的预计抵达时间时，先向用户说明。
         用户同意按方案规划不代表已经购买，购买状态按用户实际陈述填写。
         成功后继续规划每日行程；返回 issues 时与用户解决问题，重新确认后再提交。
         """

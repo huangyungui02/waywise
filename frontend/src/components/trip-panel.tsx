@@ -2,6 +2,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Calendar,
+  Bus,
   Check,
   Compass,
   Hotel,
@@ -53,7 +54,7 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
       ) : (
         <>
           <p className="font-serif text-xs leading-relaxed text-muted-foreground/70">
-            最近确认的安排。如需调整，在聊天中告诉我即可重新确认。
+            {trip.origin} → {trip.destination}。如需调整，在聊天中告诉我即可重新确认。
           </p>
 
           {/* 交通卡片 */}
@@ -63,7 +64,11 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
               ["回程", trip.inbound],
             ] as const
           ).map(([label, leg]) => {
-            const Icon = leg.type === "train" ? TrainFront : Plane;
+            const { icon: Icon, title } = {
+              train: { icon: TrainFront, title: "高铁 / 火车" },
+              flight: { icon: Plane, title: "机票航班" },
+              bus: { icon: Bus, title: "大巴 / 景区直通车" },
+            }[leg.type];
             return (
               <div
                 key={label}
@@ -77,11 +82,11 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
                       {label}
                     </span>
                     <span>·</span>
-                    <span>{leg.type === "train" ? "高铁 / 火车" : "机票航班"}</span>
+                    <span>{title}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-semibold tracking-wider text-primary">
-                      {leg.number}
+                      {leg.number ?? leg.name}
                     </span>
                     {leg.purchased && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
@@ -97,7 +102,7 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-serif text-sm font-semibold text-foreground">
-                        {leg.departure_station}
+                        {leg.departure_point}
                       </div>
                       <div className="text-[11px] text-muted-foreground/70 font-mono">
                         {leg.departure_time.replace("T", " ")}
@@ -106,7 +111,7 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
 
                     <div className="flex shrink-0 flex-col items-center px-1">
                       <span className="text-[9px] tracking-wider text-muted-foreground/45 uppercase font-mono">
-                        {leg.type === "train" ? "TRAIN" : "FLIGHT"}
+                        {leg.type.toUpperCase()}
                       </span>
                       <div className="flex items-center gap-1 text-primary/45">
                         <span className="size-1 rounded-full bg-primary/45" />
@@ -117,7 +122,7 @@ export function TripPanel({ trip }: { trip: Trip | null }) {
 
                     <div className="min-w-0 flex-1 text-right">
                       <div className="truncate font-serif text-sm font-semibold text-foreground">
-                        {leg.arrival_station}
+                        {leg.arrival_point}
                       </div>
                       <div className="text-[11px] text-muted-foreground/70 font-mono">
                         {leg.arrival_time.replace("T", " ")}

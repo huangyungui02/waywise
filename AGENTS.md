@@ -2,7 +2,7 @@
 
 ## 项目范围
 
-- 保持单 Agent，支持国内单目的城市、直达火车或飞机往返和酒店住宿。
+- 保持单 Agent，支持国内单目的地、直达火车、飞机或大巴往返和酒店住宿。
 - 咨询顺序：了解需求与已有预订 → 推荐并选定交通和住宿 → 用户确认、工具校验并保存 → 每日行程规划。修改基础安排后重新确认。
 - 确认采用方案与实际购买分别记录。用户通过真实预订链接自行购买；不实现代下单、支付或乘客证件存储。
 
@@ -10,10 +10,10 @@
 
 - 保持代码简洁，优先官方示例、API 和集成，避免重复实现框架已有能力。使用前核对已安装版本；[PydanticAI 官方参考](https://pydantic.dev/docs/ai/llms.txt)。
 - 前端使用 React + TypeScript + Vite，样式使用 Tailwind CSS 和 shadcn/ui，React Router 负责客户端路由；聊天使用官方 AI SDK，不自行实现流协议。后端使用 FastAPI 与官方 `VercelAIAdapter`，方便后续 Tauri 客户端复用 API。
-- 历史由后端 SQLite 管理，使用官方 `StepPersistence` / `SqliteStepStore` 保存步骤、`SqliteConversationStore` 保存会话，已确认的 Trip 同库保存；浏览器提交的历史不能替代服务端记录。
+- 历史由后端 SQLite 管理，使用官方 `StepPersistence` / `SqliteStepStore` 保存步骤、`SqliteConversationStore` 保存会话，已确认的 Trip 通过 SQLModel 定义存储表并同库保存，业务模型保留 Pydantic；浏览器提交的历史不能替代服务端记录。
 - MCP 使用官方 `MCP` capability；飞猪查询使用 Harness `Skills`、`FileSystem` 加载上游 Skill 和参考文档，由专用工具 `call_flyai` 统一执行 CLI。
 - 不自建 Agent 调度器、Skill 加载器、MCP 客户端、checkpoint 框架或通用工具抽象。
-- 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，关闭思考，使用官方 `WebSearch` capability 启用原生搜索。
+- 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，开启思考（reasoning effort 为 medium），使用官方 `WebSearch` capability 启用原生搜索。
 - 时间等动态信息通过工具按需获取，避免注入不断变化的系统指令。
 - `skills/flyai/` 尽量保留上游内容；更新时在 `skills/UPSTREAM.md` 记录来源与本地变更，不为调整措辞改写上游 Skill 或官方工具描述。
 

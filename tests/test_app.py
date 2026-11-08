@@ -332,7 +332,7 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     asyncio.run(run())
     body = captured[0]
     assert body["model"] == "qwen3.8-flash"
-    assert body["reasoning"]["effort"] == "none"
+    assert body["reasoning"]["effort"] == "medium"
     assert {t["type"] for t in body["tools"]} == {"web_search", "function"}
     assert {t["name"] for t in body["tools"] if t["type"] == "function"} >= {
         "load_capability",

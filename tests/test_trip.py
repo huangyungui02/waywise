@@ -15,13 +15,14 @@ from trip import Trip, TripStore
 @pytest.fixture
 def itinerary():
     return {
+        "origin": "上海",
+        "destination": "杭州",
         "outbound": {
             "type": "train",
+            "name": "G123",
             "number": "G123",
-            "departure_city": "上海",
-            "arrival_city": "杭州",
-            "departure_station": "上海虹桥",
-            "arrival_station": "杭州东",
+            "departure_point": "上海虹桥",
+            "arrival_point": "杭州东",
             "departure_time": "2026-12-04T09:00:00",
             "arrival_time": "2026-12-04T10:00:00",
             "purchase_url": "https://example.com/train",
@@ -29,11 +30,10 @@ def itinerary():
         },
         "inbound": {
             "type": "flight",
+            "name": "MU1234",
             "number": "MU1234",
-            "departure_city": "杭州",
-            "arrival_city": "上海",
-            "departure_station": "杭州萧山机场",
-            "arrival_station": "上海虹桥机场",
+            "departure_point": "杭州萧山机场",
+            "arrival_point": "上海虹桥机场",
             "departure_time": "2026-12-06T18:00:00",
             "arrival_time": "2026-12-06T19:00:00",
             "purchased": True,
@@ -66,9 +66,8 @@ def test_valid_trip_and_day_trip(itinerary):
             lambda t: t["inbound"].update(departure_time="2026-12-04T08:00:00"),
             "依次递增",
         ),
-        (lambda t: t["inbound"].update(arrival_city="北京"), "方向"),
+        (lambda t: t.update(destination="上海"), "不能相同"),
         (lambda t: t["outbound"].update(purchase_url=None), "购买链接"),
-        (lambda t: t["stays"][0].update(city="北京"), "目的城市"),
         (lambda t: t["stays"][0].update(check_out="2026-12-05"), "2026-12-05"),
         (lambda t: t["stays"].append(deepcopy(t["stays"][0])), "重复"),
         (lambda t: t["stays"][0].update(check_out="2026-12-03"), "退房"),
@@ -81,7 +80,7 @@ def test_invalid_trip(itinerary, change, expected):
 
 
 def test_transport_schema(itinerary):
-    itinerary["outbound"]["type"] = "bus"
+    itinerary["outbound"]["type"] = "car"
     with pytest.raises(ValidationError):
         Trip.model_validate(itinerary)
 
@@ -134,3 +133,53 @@ def test_time_is_a_tool(configured):
         if isinstance(message, ModelRequest):
             assert "当前北京时间：" not in (message.instructions or "")
             assert "G123" not in (message.instructions or "")
+
+
+def test_bus_to_scenic_destination(itinerary):
+    itinerary.update(origin="成都", destination="四姑娘山")
+    itinerary["outbound"].update(
+        type="bus",
+        name="成都至四姑娘山景区直通车",
+        number=None,
+        departure_point="成都茶店子客运站",
+        arrival_point="四姑娘山镇停车场",
+    )
+    itinerary["inbound"].update(
+        type="bus",
+        name="四姑娘山至成都直通车",
+        number=None,
+        departure_point="四姑娘山镇停车场",
+        arrival_point="成都东站",
+    )
+    itinerary["stays"][0].update(city="小金县", address="四姑娘山镇")
+    trip = Trip.model_validate(itinerary)
+    assert trip.issues() == []
+    assert trip.outbound.number is None
+    del itinerary["outbound"]["departure_time"]
+    with pytest.raises(ValidationError):
+        Trip.model_validate(itinerary)
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_trip_store_save_update_isolation_and_delete(tmp_path, itinerary, persistent):
+    database = tmp_path / "旅行?#.db" if persistent else None
+    store = TripStore(database=database)
+    trip = Trip.model_validate(itinerary)
+    assert store.get("missing") is None
+    store.delete("missing")
+    store.save("chat-a", trip)
+    store.save("chat-b", trip)
+    updated = trip.model_copy(deep=True)
+    updated.outbound.purchased = True
+    updated.outbound.purchase_url = None
+    store.save("chat-a", updated)
+    if persistent:
+        store = TripStore(database=database)
+    assert store.get("chat-a") == updated
+    assert store.get("chat-b") == trip
+    store.delete("chat-a")
+    store.delete("chat-a")
+    if persistent:
+        store = TripStore(database=database)
+    assert store.get("chat-a") is None
+    assert store.get("chat-b") == trip

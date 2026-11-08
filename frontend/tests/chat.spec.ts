@@ -97,8 +97,8 @@ test("停止生成后仍能读取已保存记录并继续聊天", async ({ page 
 test("表单合并发送，刷新恢复摘要，聊天调整需求和手机布局", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByLabel("出发城市", { exact: true }).fill("上海");
-  await page.getByLabel("目的城市", { exact: true }).fill("杭州");
+  await page.getByLabel("出发地", { exact: true }).fill("上海");
+  await page.getByLabel("目的地", { exact: true }).fill("杭州");
   await page.getByLabel("出发日期", { exact: true }).fill("2026-12-01");
   await page.getByLabel("返回日期", { exact: true }).fill("2026-12-03");
   await page.getByLabel("成人", { exact: true }).fill("2");
@@ -108,7 +108,7 @@ test("表单合并发送，刷新恢复摘要，聊天调整需求和手机布�
   await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
   await expect(page.locator("article").first().getByText("上海", { exact: true })).toBeVisible();
   await expect(page.locator("article").first().getByText("杭州", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("出发城市", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("出发地", { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("button", { name: "修改需求" })).toHaveCount(0);
   await expect(page.locator("article").first().getByText("杭州", { exact: true })).toBeVisible();
@@ -134,9 +134,10 @@ for (const mobile of [false, true]) {
     await expect(page).toHaveURL(/\/chat\//);
     const leg = {
       type: "train",
+      name: "G123",
       number: "G123",
-      departure_station: "上海虹桥",
-      arrival_station: "杭州东",
+      departure_point: "上海虹桥",
+      arrival_point: "杭州东",
       departure_time: "2026-12-01T09:00:00",
       arrival_time: "2026-12-01T10:00:00",
       purchased: true,
@@ -146,12 +147,16 @@ for (const mobile of [false, true]) {
       const response = await route.fetch();
       const detail = await response.json();
       detail.trip = {
+        origin: "上海",
+        destination: "杭州",
         outbound: leg,
         inbound: {
           ...leg,
-          number: "G456",
-          departure_station: "杭州东",
-          arrival_station: "上海虹桥",
+          type: "bus",
+          name: "杭州至上海直通车",
+          number: null,
+          departure_point: "杭州东",
+          arrival_point: "上海虹桥",
           purchased: false,
           purchase_url: "https://example.com/train",
         },
@@ -175,6 +180,7 @@ for (const mobile of [false, true]) {
       : page.getByRole("complementary", { name: "旅行基础安排" });
     await expect(panel.getByText("已确认方案")).toBeVisible();
     await expect(panel.getByText("G123", { exact: true })).toBeVisible();
+    await expect(panel.getByText("杭州至上海直通车", { exact: true })).toBeVisible();
     await expect(panel.getByText("已购买", { exact: true })).toBeVisible();
     await expect(panel.getByRole("link", { name: "前往购买" })).toHaveAttribute(
       "href",
