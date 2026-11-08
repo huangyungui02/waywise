@@ -81,6 +81,8 @@ export function Message({ message, detail, busy, onConfirm }: { message: UIMessa
                 brief["成人"] ? `${brief["成人"]} 位成人` : "",
                 brief["老人"] ? `${brief["老人"]} 位长辈` : "",
                 brief["儿童"] ? `${brief["儿童"]} 位儿童` : "",
+                brief["老人同行"] === "有" ? "有老人同行" : "",
+                brief["小孩同行"] === "有" ? "有小孩同行" : "",
                 brief["交通偏好"],
                 brief["住宿偏好"],
                 brief["预算金额"]

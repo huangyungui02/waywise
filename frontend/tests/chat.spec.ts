@@ -1,4 +1,37 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function selectDate(page: Page, label: string, date: string) {
+  await page.getByRole("button", { name: label, exact: true }).click();
+  const calendar = page.getByRole("dialog", { name: label, exact: true });
+  await calendar.getByRole("combobox", { name: "年份" }).selectOption(date.slice(0, 4));
+  await calendar.getByRole("combobox", { name: "月份" }).selectOption(String(Number(date.slice(5, 7)) - 1));
+  await calendar.getByRole("button", { name: date, exact: true }).click();
+  await expect(calendar).not.toBeVisible();
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? "手机" : "桌面"}日历可清除并约束往返日期，选项可取消`, async ({ page }) => {
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await page.goto("/");
+    await selectDate(page, "出发日期", "2026-12-10");
+    await page.getByRole("button", { name: "返回日期", exact: true }).click();
+    await expect(page.getByRole("button", { name: "2026-12-09", exact: true })).toBeDisabled();
+    await page.screenshot({ path: `/private/tmp/travel-form-calendar-${mobile ? "mobile" : "desktop"}.png`, fullPage: true, animations: "disabled" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("button", { name: "2026-12-12", exact: true }).click();
+    await selectDate(page, "出发日期", "2026-12-15");
+    await expect(page.getByRole("button", { name: "返回日期", exact: true })).toHaveText("选择日期");
+    await page.getByRole("button", { name: "出发日期", exact: true }).click();
+    await page.getByRole("button", { name: "清除日期", exact: true }).click();
+    await expect(page.getByRole("button", { name: "出发日期", exact: true })).toHaveText("选择日期");
+    await page.getByRole("checkbox", { name: "有老人", exact: true }).check();
+    await page.getByRole("checkbox", { name: "有老人", exact: true }).uncheck();
+    await expect(page.getByRole("checkbox", { name: "有老人", exact: true })).not.toBeChecked();
+    await page.getByRole("radio", { name: "人均", exact: true }).check();
+    await page.getByRole("radio", { name: "总共", exact: true }).check();
+    await expect(page.getByRole("radio", { name: "人均", exact: true })).not.toBeChecked();
+  });
+}
 
 for (const mobile of [false, true]) {
   test(`${mobile ? "手机" : "桌面"}新旅行发送前不创建会话，空白会话不能重复新建`, async ({ page }) => {
@@ -146,15 +179,22 @@ test("表单合并发送，刷新恢复摘要，聊天调整需求和手机布�
   await page.goto("/");
   await page.getByLabel("出发地", { exact: true }).fill("上海");
   await page.getByLabel("目的地", { exact: true }).fill("杭州");
-  await page.getByLabel("出发日期", { exact: true }).fill("2026-12-01");
-  await page.getByLabel("返回日期", { exact: true }).fill("2026-12-03");
+  await selectDate(page, "出发日期", "2026-12-01");
+  await selectDate(page, "返回日期", "2026-12-03");
   await page.getByLabel("同行人数", { exact: true }).fill("2");
-  await page.getByLabel("预算", { exact: true }).fill("每人 2000 元");
+  await page.getByLabel("预算", { exact: true }).fill("2000");
+  await page.getByRole("radio", { name: "人均", exact: true }).check();
+  await page.getByRole("checkbox", { name: "有老人", exact: true }).check();
+  await page.getByRole("checkbox", { name: "有小孩", exact: true }).check();
   await page.getByRole("textbox", { name: "旅行需求" }).fill("想住湖边");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
   await expect(page.locator("article").first().getByText("上海", { exact: true })).toBeVisible();
   await expect(page.locator("article").first().getByText("杭州", { exact: true })).toBeVisible();
+  await expect(page.locator("article").first()).toContainText("2026-12-01 至 2026-12-03");
+  await expect(page.locator("article").first()).toContainText("¥2000 (人均)");
+  await expect(page.locator("article").first()).toContainText("有老人同行");
+  await expect(page.locator("article").first()).toContainText("有小孩同行");
   await expect(page.getByLabel("出发地", { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("button", { name: "修改需求" })).toHaveCount(0);
@@ -318,7 +358,10 @@ for (const mobile of [false, true]) {
     for (const newConversation of [false, true]) {
       if (newConversation) await page.getByRole("button", { name: mobile ? "新建旅行" : "开始一段旅行", exact: true }).click();
       const card = page.getByRole("region", { name: "旅行基本信息" });
-      await expect(card.locator("input")).toHaveCount(6);
+      await expect(card.getByRole("textbox")).toHaveCount(2);
+      await expect(card.getByRole("spinbutton")).toHaveCount(2);
+      await expect(card.getByRole("checkbox")).toHaveCount(2);
+      await expect(card.getByRole("radio", { name: "总共" })).toBeChecked();
       await expect(page.getByText("旅行想法与期待", { exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "开始规划", exact: true })).toHaveCount(0);
       const composer = page.getByRole("textbox", { name: "旅行需求" });
