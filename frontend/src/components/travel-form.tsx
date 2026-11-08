@@ -1,30 +1,11 @@
-import { useState } from "react";
-import { ArrowRight, ArrowUpRight, Compass, LoaderCircle, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-
 const fields = [
-  ["出发城市", "text", "出发地"],
-  ["目的城市", "text", "目的地"],
-  ["出发日期", "date", ""],
-  ["返回日期", "date", ""],
-  ["成人", "number", "1"],
-  ["老人", "number", "0"],
-  ["儿童", "number", "0"],
-  ["儿童年龄", "text", "儿童年龄"],
-  ["预算金额", "number", "预算金额"],
+  { key: "出发城市", label: "出发地", type: "text", placeholder: "从哪里出发" },
+  { key: "目的城市", label: "目的地", type: "text", placeholder: "想去哪里" },
+  { key: "出发日期", label: "出发日期", type: "date" },
+  { key: "返回日期", label: "返回日期", type: "date" },
+  { key: "同行人数", label: "同行人数", type: "number", placeholder: "几个人出行" },
+  { key: "预算", label: "预算", type: "text", placeholder: "如：每人 2000 元" },
 ] as const;
-
-const interests = [
-  "当地美食",
-  "自然山水",
-  "历史人文",
-  "城市漫步",
-  "慢节奏",
-  "特色民宿",
-  "亲子体验",
-  "摄影出片",
-];
 
 const marker = "这次旅行的想法：";
 
@@ -45,292 +26,40 @@ export function readBrief(text: string): Record<string, string> | undefined {
   );
 }
 
-export function TravelForm({
-  busy = false,
-  onSubmit,
-}: {
-  busy?: boolean;
-  onSubmit: (text: string) => void;
+export function travelPrompt(values: Record<string, string>, text: string): string {
+  const entries = Object.entries(values).filter(([, value]) => value.trim());
+  if (!entries.length) return text.trim();
+  if (text.trim()) entries.push(["补充想法", text.trim().replace(/\n/g, " ")]);
+  return marker + "\n" + entries.map(([key, value]) => `${key}：${value.trim()}`).join("\n");
+}
+
+export function TravelForm({ values, onChange }: {
+  values: Record<string, string>;
+  onChange: (values: Record<string, string>) => void;
 }) {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [note, setNote] = useState("");
-
-  const update = (key: string, value: string) =>
-    setValues((v) => ({ ...v, [key]: value }));
-
-  const selected = (values["兴趣偏好"] || "").split("、").filter(Boolean);
-  const hasInput = note.trim() || Object.values(values).some((v) => v.trim());
-
   return (
-    <form
-      className="pure-capsule relative space-y-5 p-6 sm:p-8"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!hasInput || busy) return;
-        if (!Object.values(values).some((v) => v.trim())) {
-          onSubmit(note.trim());
-          return;
-        }
-        const data = { ...values, 补充想法: note.replace(/\n/g, " ") };
-        onSubmit(
-          marker +
-            "\n" +
-            Object.entries(data)
-              .filter(([, v]) => v.trim())
-              .map(([k, v]) => `${k}：${v}`)
-              .join("\n"),
-        );
-      }}
-    >
-      {/* 核心自然语言随笔 */}
+    <section aria-label="旅行基本信息" className="pure-capsule space-y-5 p-5 sm:p-7">
       <div>
-        <label
-          htmlFor="travel-main-note"
-          className="mb-2 flex items-center gap-1.5 font-serif text-sm font-medium tracking-wide text-foreground"
-        >
-          <Sparkles className="size-3.5 text-primary" />
-          <span>旅行想法与期待</span>
-        </label>
-        <Textarea
-          id="travel-main-note"
-          aria-label="旅行需求"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="例如：想在四月去杭州住西湖边、带父母坐高铁慢游三天……或只写一句话从容开始。"
-          className="min-h-20 w-full resize-none rounded-xl bg-black/[0.025] p-3.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all border-0 shadow-none"
-        />
+        <h2 className="font-serif text-lg font-medium text-foreground">这次去哪里？</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          先填已确定的信息，其他可以边聊边定。
+        </p>
       </div>
-
-      {/* 起讫与行程细节：轻透无框流动 */}
-      <div className="space-y-3.5 pt-1">
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              出发地
-            </span>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+        {fields.map((field) => (
+          <label key={field.key} className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-xs text-muted-foreground">{field.label}</span>
             <input
-              type="text"
-              placeholder="出发地"
-              value={values["出发城市"] || ""}
-              onChange={(e) => update("出发城市", e.target.value)}
-              className="pure-field"
+              type={field.type}
+              placeholder={"placeholder" in field ? field.placeholder : undefined}
+              min={field.type === "number" ? 1 : field.key === "返回日期" ? values["出发日期"] || undefined : undefined}
+              value={values[field.key] || ""}
+              onChange={(event) => onChange({ ...values, [field.key]: event.target.value })}
+              className="pure-field min-w-0 w-full"
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              目的地
-            </span>
-            <input
-              type="text"
-              placeholder="想去哪里？"
-              value={values["目的城市"] || ""}
-              onChange={(e) => update("目的城市", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <label className="col-span-2 flex flex-col gap-1 sm:col-span-2">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              出发日期
-            </span>
-            <input
-              type="date"
-              value={values["出发日期"] || ""}
-              onChange={(e) => update("出发日期", e.target.value)}
-              className="pure-field font-mono text-xs"
-            />
-          </label>
-          <label className="col-span-2 flex flex-col gap-1 sm:col-span-2">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              返回日期
-            </span>
-            <input
-              type="date"
-              min={values["出发日期"] || undefined}
-              value={values["返回日期"] || ""}
-              onChange={(e) => update("返回日期", e.target.value)}
-              className="pure-field font-mono text-xs"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              成人
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={99}
-              placeholder="人数"
-              value={values["成人"] || ""}
-              onChange={(e) => update("成人", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              老人
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={99}
-              placeholder="长辈"
-              value={values["老人"] || ""}
-              onChange={(e) => update("老人", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              儿童
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={99}
-              placeholder="儿童"
-              value={values["儿童"] || ""}
-              onChange={(e) => update("儿童", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              儿童年龄
-            </span>
-            <input
-              type="text"
-              placeholder="如：5岁"
-              value={values["儿童年龄"] || ""}
-              onChange={(e) => update("儿童年龄", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              预算金额
-            </span>
-            <input
-              type="number"
-              min={1}
-              placeholder="¥ 预算金额"
-              value={values["预算金额"] || ""}
-              onChange={(e) => update("预算金额", e.target.value)}
-              className="pure-field"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              预算口径
-            </span>
-            <select
-              className="pure-select"
-              value={values["预算口径"] || ""}
-              onChange={(e) => update("预算口径", e.target.value)}
-            >
-              <option value="">暂未确定</option>
-              <option value="全程总预算">全程总预算</option>
-              <option value="每人全程预算">每人全程预算</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              交通偏好
-            </span>
-            <select
-              className="pure-select"
-              value={values["交通偏好"] || ""}
-              onChange={(e) => update("交通偏好", e.target.value)}
-            >
-              <option value="">暂未确定</option>
-              <option value="都可以">都可以</option>
-              <option value="高铁 / 火车">高铁 / 火车</option>
-              <option value="飞机">飞机</option>
-              <option value="大巴 / 景区直通车">大巴 / 景区直通车</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-              住宿偏好
-            </span>
-            <select
-              className="pure-select"
-              value={values["住宿偏好"] || ""}
-              onChange={(e) => update("住宿偏好", e.target.value)}
-            >
-              <option value="">暂未确定</option>
-              <option value="舒适方便">舒适方便</option>
-              <option value="经济实惠">经济实惠</option>
-              <option value="品质酒店">品质酒店</option>
-              <option value="特色住宿">特色住宿</option>
-            </select>
-          </label>
-        </div>
-
-        {/* 兴趣标签 */}
-        <fieldset className="pt-1">
-          <legend className="mb-2 text-[11px] font-medium text-muted-foreground/80 font-mono">
-            兴趣偏好
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {interests.map((item) => {
-              const active = selected.includes(item);
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() =>
-                    update(
-                      "兴趣偏好",
-                      (active
-                        ? selected.filter((s) => s !== item)
-                        : [...selected, item]
-                      ).join("、"),
-                    )
-                  }
-                  className={`pure-pill ${
-                    active ? "pure-pill-active" : ""
-                  }`}
-                >
-                  {item}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
-
-        {/* 已有预订 */}
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium text-muted-foreground/80 font-mono">
-            已有预订
-          </span>
-          <input
-            className="pure-field"
-            placeholder="已订车票、航班或酒店（选填）"
-            value={values["已有预订"] || ""}
-            onChange={(e) => update("已有预订", e.target.value)}
-          />
-        </label>
+        ))}
       </div>
-
-      {/* 底部极简操作 */}
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Button
-          disabled={!hasInput || busy}
-          className="gap-2 rounded-full bg-primary px-6 text-xs text-white shadow-xs hover:bg-primary/95 active:scale-95 transition-all"
-          type="submit"
-        >
-          {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
-          开始规划
-          <ArrowUpRight className="size-3.5" />
-        </Button>
-      </div>
-    </form>
+    </section>
   );
 }

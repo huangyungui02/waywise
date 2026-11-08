@@ -4,14 +4,11 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
   ArrowDown,
-  ArrowUp,
   CircleAlert,
   LoaderCircle,
   Route,
-  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet,
@@ -24,7 +21,8 @@ import {
 import type { Detail } from "@/api";
 import { Message } from "./message";
 import { TripPanel } from "./trip-panel";
-import { TravelForm } from "./travel-form";
+import { TravelForm, travelPrompt } from "./travel-form";
+import { Composer } from "./composer";
 
 export function ChatRoute() {
   const detail = useLoaderData() as Detail;
@@ -34,7 +32,7 @@ export function ChatRoute() {
 function Chat({ detail }: { detail: Detail }) {
   const revalidator = useRevalidator();
   const location = useLocation();
-  const [text, setText] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({});
   const initialSent = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -95,15 +93,6 @@ function Chat({ detail }: { detail: Detail }) {
       scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [displayMessages, atBottom]);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!text.trim() || running) return;
-    const input = text.trim();
-    setText("");
-    setAtBottom(true);
-    await sendMessage({ text: input });
-  }
-
   return (
     <>
       <div className="flex shrink-0 items-center justify-end px-4 py-2 sm:px-8 xl:hidden">
@@ -151,12 +140,7 @@ function Chat({ detail }: { detail: Detail }) {
           >
             <div className="mx-auto max-w-2xl space-y-6 py-6 sm:py-8">
               {!displayMessages.length && (
-                <TravelForm
-                  busy={running}
-                  onSubmit={(input) => {
-                    void sendMessage({ text: input });
-                  }}
-                />
+                <TravelForm values={values} onChange={setValues} />
               )}
 
               {displayMessages.map((message) => (
@@ -214,59 +198,16 @@ function Chat({ detail }: { detail: Detail }) {
             </Button>
           )}
 
-          {/* 极致纯净：单行悬浮液态玻璃输入胶囊（无下划线分割，无键盘说教，纯粹单图标） */}
-          {!!displayMessages.length && (
-            <div className="shrink-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pb-6">
-              <form
-                onSubmit={submit}
-                className="pure-capsule mx-auto flex max-w-2xl items-center gap-2 rounded-full p-1.5 pl-4 sm:pl-5 transition-all duration-200 focus-within:shadow-[0_12px_40px_-6px_rgba(25,35,28,0.1)] focus-within:bg-white/95"
-              >
-                <Textarea
-                  aria-label="旅行需求"
-                  placeholder="写下关于这次旅行的任何想法…"
-                  rows={1}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      !e.shiftKey &&
-                      !e.nativeEvent.isComposing
-                    ) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  className="max-h-32 min-h-6 flex-1 resize-none border-0 bg-transparent py-1 text-sm leading-relaxed shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/45"
-                />
-
-                <div className="flex shrink-0 items-center">
-                  {running ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => void stop()}
-                      className="size-9 rounded-full bg-black/[0.04] text-foreground hover:bg-black/[0.08]"
-                    >
-                      <span className="sr-only">停止</span>
-                      <Square className="size-3 fill-current" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={!text.trim()}
-                      className="size-9 rounded-full bg-primary text-white shadow-xs hover:bg-primary/95 transition-all duration-200 active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
-                    >
-                      <span className="sr-only">发送</span>
-                      <ArrowUp className="size-4 stroke-[2.2]" />
-                    </Button>
-                  )}
-                </div>
-              </form>
-            </div>
-          )}
+          <Composer
+            busy={running}
+            hasFormValues={!displayMessages.length && Object.values(values).some((value) => value.trim())}
+            onStop={() => void stop()}
+            onSend={async (text) => {
+              const input = displayMessages.length ? text : travelPrompt(values, text);
+              setAtBottom(true);
+              await sendMessage({ text: input });
+            }}
+          />
         </div>
 
         {/* 宽屏右侧基础安排 */}

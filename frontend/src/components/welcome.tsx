@@ -1,16 +1,25 @@
+import { useState } from "react";
 import { useOutletContext } from "react-router";
 import type { TravelActions } from "./layout";
-import { TravelForm } from "./travel-form";
+import { TravelForm, travelPrompt } from "./travel-form";
+import { Composer } from "./composer";
 
 export function Welcome() {
   const { create, creating } = useOutletContext<TravelActions>();
+  const [values, setValues] = useState<Record<string, string>>({});
 
   return (
-    <section className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
-      <div className="mx-auto max-w-2xl px-4 py-6 sm:px-8 sm:py-12">
-        {/* 纯净表单卡片 */}
-        <TravelForm busy={creating} onSubmit={(text) => void create(text)} />
-      </div>
-    </section>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8">
+        <div className="mx-auto max-w-2xl py-6 sm:py-12">
+          <TravelForm values={values} onChange={setValues} />
+        </div>
+      </section>
+      <Composer
+        busy={creating}
+        hasFormValues={Object.values(values).some((value) => value.trim())}
+        onSend={(text) => create(travelPrompt(values, text))}
+      />
+    </div>
   );
 }

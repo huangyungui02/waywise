@@ -49,13 +49,7 @@ function ToolActivityGroup({ children, count }: { children: ReactNode; count: nu
       )}
     >
       <div ref={content} className="space-y-1">
-      {count > 1 && (
-        <div className="mb-1 flex items-center justify-between px-1 text-[10px] text-muted-foreground/60 font-mono uppercase">
-          <span>行程查询记录</span>
-          <span>{count} 项</span>
-        </div>
-      )}
-      {children}
+        {children}
       </div>
     </div>
   );
@@ -80,6 +74,8 @@ export function Message({ message }: { message: UIMessage }) {
                 .filter(Boolean)
                 .join(" 至 ");
               const tags = [
+                brief["同行人数"] ? `${brief["同行人数"]} 人同行` : "",
+                brief["预算"] ? `预算 ${brief["预算"]}` : "",
                 brief["成人"] ? `${brief["成人"]} 位成人` : "",
                 brief["老人"] ? `${brief["老人"]} 位长辈` : "",
                 brief["儿童"] ? `${brief["儿童"]} 位儿童` : "",
