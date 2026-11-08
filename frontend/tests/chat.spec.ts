@@ -1,5 +1,33 @@
 import { expect, test } from "@playwright/test";
 
+for (const mobile of [false, true]) {
+  test(`${mobile ? "手机" : "桌面"}新旅行发送前不创建会话，空白会话不能重复新建`, async ({ page }) => {
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    let creates = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/api/conversations") creates++;
+    });
+    await page.goto("/");
+    const existing = await (await page.request.get("/api/conversations")).json();
+    const newTravel = page.getByRole("button", { name: mobile ? "新建旅行" : "开始一段旅行", exact: true });
+    await expect(newTravel).toBeDisabled();
+    await page.getByLabel("目的地", { exact: true }).fill("四姑娘山");
+    await expect(newTravel).toBeDisabled();
+    expect(creates).toBe(0);
+    expect(await (await page.request.get("/api/conversations")).json()).toHaveLength(existing.length);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
+    expect(creates).toBe(1);
+    await newTravel.click();
+    await expect(page).toHaveURL("http://127.0.0.1:5179/");
+    await expect(newTravel).toBeDisabled();
+    await page.reload();
+    await expect(newTravel).toBeDisabled();
+    expect(creates).toBe(1);
+    expect(await (await page.request.get("/api/conversations")).json()).toHaveLength(existing.length + 1);
+  });
+}
+
 test("模型思考时显示动画并隐藏思考内容，正式输出时立即移除", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox", { name: "旅行需求" }).fill("思考测试");
@@ -26,12 +54,12 @@ test("新建、发送、工具展示、刷新恢复、切换与删除", async ({
     path: "/private/tmp/travel-agent-welcome.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "开始一段旅行" }).click();
-  await expect(page).toHaveURL(/\/chat\//);
-  const firstUrl = page.url();
+  await expect(page.getByRole("button", { name: "开始一段旅行" })).toBeDisabled();
   const prompt = `去杭州 ${Date.now()}`;
   await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
   await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page).toHaveURL(/\/chat\//);
+  const firstUrl = page.url();
   await expect(page.getByText(`收到你的旅行想法：${prompt}。`)).toBeVisible();
   const userMessage = page.locator("article").getByText(prompt, { exact: true });
   const selection = await userMessage.evaluate((element) => {

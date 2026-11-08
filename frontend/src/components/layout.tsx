@@ -4,6 +4,7 @@ import {
   NavLink,
   Outlet,
   useLoaderData,
+  useLocation,
   useNavigate,
   useNavigation,
   useRevalidator,
@@ -74,6 +75,7 @@ export function Layout() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const navigation = useNavigation();
+  const drafting = useLocation().pathname === "/";
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,6 +84,11 @@ export function Layout() {
 
   async function create(prompt?: string) {
     if (creating) return;
+    if (!prompt?.trim()) {
+      setMobileOpen(false);
+      if (!drafting) await navigate("/");
+      return;
+    }
     setCreating(true);
     try {
       const conversation = await api<Conversation>("/conversations", {
@@ -123,7 +130,7 @@ export function Layout() {
       {/* Arc 风格主操作按钮 */}
       <Button
         onClick={() => void create()}
-        disabled={creating}
+        disabled={creating || drafting}
         variant="outline"
         className="mt-4 h-10 w-full justify-start gap-2.5 rounded-xl border-white/80 bg-white/70 px-3.5 text-xs font-medium text-foreground shadow-xs backdrop-blur-md transition-all duration-200 hover:bg-white hover:shadow hover:scale-[1.01]"
       >
@@ -238,7 +245,7 @@ export function Layout() {
             size="icon"
             aria-label="新建旅行"
             onClick={() => void create()}
-            disabled={creating}
+            disabled={creating || drafting}
             className="size-9 rounded-full"
           >
             <Plus className="size-4" />
