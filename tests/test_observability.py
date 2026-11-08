@@ -128,3 +128,14 @@ def test_no_token_does_not_configure_logfire(monkeypatch, tmp_path):
         app.create_app(settings, Agent("test", deps_type=TripStore))
     ) as client:
         assert client.get("/api/health").status_code == 200
+
+
+def test_local_logfire_token_is_not_loaded_in_tests(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("LOGFIRE_TOKEN=test-local-token\n")
+    settings = Settings(
+        _env_file=env_file,
+        DASHSCOPE_API_KEY="test-key",
+        AMAP_MAPS_API_KEY="test-map-key",
+    )
+    assert settings.logfire_token.get_secret_value() == ""

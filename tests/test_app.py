@@ -341,6 +341,7 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
         "amap_route",
         "current_time",
         "confirm_trip",
+        "present_trip",
     }
     assert "confirmed_trip" not in {t.get("name") for t in body["tools"]}
     assert "x-anthropic-billing-header" not in str(body)

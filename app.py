@@ -24,11 +24,11 @@ from starlette.background import BackgroundTask
 
 from agent import create_agent
 from settings import ROOT, Settings
-from trip import TripStore
+from trip import Trip, TripStore
 
 
 def create_app(
-    settings: Settings | None = None, agent: Agent[TripStore, str] | None = None
+    settings: Settings | None = None, agent: Agent[TripStore, str | Trip] | None = None
 ) -> FastAPI:
     settings = settings or Settings()
     database = settings.database_path
@@ -100,15 +100,34 @@ def create_app(
     @api.get("/api/conversations/{conversation_id}")
     async def get_conversation(conversation_id: str):
         saved = await load(conversation_id)
-        trip = await anyio.to_thread.run_sync(trips.get, conversation_id)
+        state = await anyio.to_thread.run_sync(trips.get_state, conversation_id)
         return {
             "summary": asdict(saved.summary),
             "messages": [
                 m.model_dump(mode="json", by_alias=True, exclude_none=True)
                 for m in VercelAIAdapter.dump_messages(saved.messages, sdk_version=6)
             ],
-            "trip": trip.model_dump(mode="json") if trip else None,
+            **{
+                key: value.model_dump(mode="json") if isinstance(value, Trip) else value
+                for key, value in state.items()
+            },
         }
+
+    @api.post("/api/conversations/{conversation_id}/proposals/{proposal_id}/confirm")
+    async def confirm_proposal(conversation_id: str, proposal_id: str):
+        await load(conversation_id)
+        if conversation_id in busy:
+            raise HTTPException(409, "请等待当前回复结束后确认")
+        busy.add(conversation_id)
+        try:
+            trip = await anyio.to_thread.run_sync(
+                trips.confirm, conversation_id, proposal_id
+            )
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        finally:
+            busy.discard(conversation_id)
+        return trip.model_dump(mode="json")
 
     @api.delete("/api/conversations/{conversation_id}", status_code=204)
     async def delete_conversation(conversation_id: str):

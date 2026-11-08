@@ -107,9 +107,9 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
 
             yield {
                 0: DeltaToolCall(
-                    name="confirm_trip",
-                    json_args=json.dumps({"trip": itinerary}),
-                    tool_call_id="confirm-1",
+                    name="present_trip",
+                    json_args=json.dumps(itinerary),
+                    tool_call_id="proposal-1",
                 )
             }
         else:
@@ -121,10 +121,35 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("确认安排")
             )
+            assert "present_trip" in response.text
+            pending = client.get(f"/api/conversations/{cid}").json()
+            assert pending["trip"] is None
+            assert pending["pending_trip"]["destination"] == "杭州"
+            assert (
+                client.post(
+                    f"/api/conversations/{cid}/proposals/old/confirm"
+                ).status_code
+                == 409
+            )
+            assert (
+                client.post(
+                    f"/api/conversations/{cid}/proposals/proposal-1/confirm"
+                ).status_code
+                == 200
+            )
+            assert (
+                client.post(
+                    f"/api/conversations/{cid}/proposals/proposal-1/confirm"
+                ).status_code
+                == 409
+            )
+            response = client.post(
+                f"/api/conversations/{cid}/chat", json=request("继续规划")
+            )
             assert "交通住宿已确认" in response.text
             data = client.get(f"/api/conversations/{cid}").json()
             assert data["trip"]["outbound"]["number"] == "G123"
-            assert "confirm_trip" in str(data["messages"])
+            assert "present_trip" in str(data["messages"])
         assert TripStore(database=settings.database_path).get(
             cid
         ) == Trip.model_validate(itinerary)
@@ -132,7 +157,7 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
         async def check_snapshots():
             store = SqliteStepStore(database=settings.database_path)
             runs = await store.list_runs(conversation_id=cid)
-            assert len(runs) == 1
+            assert len(runs) == 2
             assert await store.latest_snapshot(run_id=runs[0].run_id) is not None
             # 模拟已有 checkpoint、会话最终提交尚未完成时进程退出。
             conversations = SqliteConversationStore(database=settings.database_path)

@@ -6,7 +6,7 @@ from datetime import datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.alibaba import AlibabaProvider
@@ -16,7 +16,21 @@ from settings import ROOT, Settings
 from trip import Trip, TripStore
 
 
-def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
+def present_trip(ctx: RunContext[TripStore], trip: Trip) -> Trip:
+    """提交选定的完整往返交通和住宿，以卡片展示并结束本轮，等待用户确认。
+
+    提交前核实往返方向、酒店位置和全部日期，未购买的商品必须有真实预订链接。
+    预计抵达时间需有依据并提前向用户说明；购买状态以用户陈述为准。
+    校验失败时修正方案后重新提交，成功后等待用户确认或提出修改。
+    """
+    if issues := trip.issues():
+        raise ModelRetry("；".join(issues))
+    assert ctx.conversation_id is not None and ctx.tool_call_id is not None
+    ctx.deps.present(ctx.conversation_id, trip, ctx.tool_call_id)
+    return trip
+
+
+def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Trip]:
     settings = settings or Settings()
     agent = Agent(
         OpenAIResponsesModel(
@@ -28,6 +42,8 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
         ),
         name="国内旅行助手",
         deps_type=TripStore,
+        output_type=[str, ToolOutput(present_trip, name="present_trip")],
+        end_strategy="early",
         model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
         capabilities=[
@@ -110,24 +126,20 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str]:
         return f"当前北京时间：{datetime.now(ZoneInfo('Asia/Shanghai')):%Y-%m-%d %A %H:%M}。"
 
     @agent.tool
-    def confirm_trip(ctx: RunContext[TripStore], trip: Trip) -> dict:
-        """保存用户选定的往返交通和住宿，作为接下来安排每日游览的依据。
+    def confirm_trip(ctx: RunContext[TripStore]) -> dict:
+        """用户明确同意当前展示的方案后，确认并保存交通和住宿，再继续每日规划。
 
-        先了解需求、补齐未订的交通和酒店，将完整方案展示给用户；用户明确同意后再调用。
-        trip 填写整体出发地、目的地、已选定的直达往返交通与全部酒店。
-        提交前核实往返方向与酒店位置，交通填写具体上下车地点。
-        时间使用不带时区的北京时间，采用有依据的预计抵达时间时，先向用户说明。
-        用户同意按方案规划不代表已经购买，购买状态按用户实际陈述填写。
-        成功后继续规划每日行程；返回 issues 时与用户解决问题，重新确认后再提交。
+        自动读取当前会话的待确认方案，无需重新填写旅行数据。
+        用户提出修改时先查询并用 present_trip 提交新方案，等待重新确认。
         """
-        issues = trip.issues()
-        if issues:
-            return {"success": False, "issues": issues}
-        assert ctx.conversation_id is not None  # Agent 在运行开始时解析会话 ID。
-        ctx.deps.save(ctx.conversation_id, trip)
+        assert ctx.conversation_id is not None
+        try:
+            trip = ctx.deps.confirm(ctx.conversation_id)
+        except ValueError as error:
+            return {"success": False, "issues": [str(error)]}
         return {
             "success": True,
-            "message": "交通和住宿已保存，可以开始每日行程规划。",
+            "message": "交通和住宿已确认，可以开始每日行程规划。",
             "trip": trip.model_dump(mode="json"),
         }
 

@@ -11,10 +11,13 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Detail, Trip } from "@/api";
+import { TripCard } from "./trip-card";
 import { readBrief } from "./travel-form";
 
 const toolNames: Record<string, string> = {
   current_time: "核对北京时间",
+  present_trip: "整理交通和住宿方案",
   confirm_trip: "检查并保存交通和住宿",
   load_capability: "准备旅行查询",
   read_file: "查阅旅行查询说明",
@@ -55,7 +58,7 @@ function ToolActivityGroup({ children, count }: { children: ReactNode; count: nu
   );
 }
 
-export function Message({ message }: { message: UIMessage }) {
+export function Message({ message, detail, busy, onConfirm }: { message: UIMessage; detail: Detail; busy: boolean; onConfirm: (id: string) => void }) {
   const user = message.role === "user";
 
   if (user) {
@@ -157,6 +160,7 @@ export function Message({ message }: { message: UIMessage }) {
 
   // 将消息 parts 组织成文本与工具组，避免工具刷屏撑破页面
   type PartGroup =
+    | { type: "proposal"; trip: Trip; id: string }
     | { type: "text"; text: string; key: number }
     | { type: "tools"; tools: Array<{ part: Parameters<typeof isToolUIPart>[0]; key: number }> };
 
@@ -165,6 +169,15 @@ export function Message({ message }: { message: UIMessage }) {
     if (part.type === "text") {
       groups.push({ type: "text", text: part.text, key: i });
     } else if (isToolUIPart(part)) {
+      const name = part.type === "dynamic-tool" ? part.toolName : part.type.slice(5);
+      if (name === "present_trip" && part.state === "output-available") {
+        // 仅在输出工具成功后展示已校验的参数；框架返回值是结束标记。
+        const input = part.input as Trip | { trip: Trip };
+        // 单模型参数默认展开；兼容历史消息中按参数名包装的输入。
+        const trip = "trip" in input ? input.trip : input;
+        groups.push({ type: "proposal", trip, id: part.toolCallId });
+        return;
+      }
       const last = groups[groups.length - 1];
       if (last && last.type === "tools") {
         last.tools.push({ part, key: i });
@@ -178,6 +191,10 @@ export function Message({ message }: { message: UIMessage }) {
     <article>
       <div className="min-w-0 flex-1 space-y-2">
         {groups.map((group, groupIdx) => {
+          if (group.type === "proposal") {
+            const status = detail.pending_id === group.id ? "pending" : detail.confirmed_id === group.id ? "confirmed" : "outdated";
+            return <section key={group.id} aria-label="交通与住宿方案" className="pure-capsule p-4 sm:p-5"><TripCard trip={group.trip} status={status} disabled={busy} onConfirm={() => onConfirm(group.id)} /></section>;
+          }
           if (group.type === "text") {
             return (
               <div

@@ -12,43 +12,46 @@ import agent as agent_module
 from trip import Trip, TripStore
 
 
+ITINERARY = {
+    "origin": "上海",
+    "destination": "杭州",
+    "outbound": {
+        "type": "train",
+        "name": "G123",
+        "number": "G123",
+        "departure_point": "上海虹桥",
+        "arrival_point": "杭州东",
+        "departure_time": "2026-12-04T09:00:00",
+        "arrival_time": "2026-12-04T10:00:00",
+        "purchase_url": "https://example.com/train",
+        "purchased": False,
+    },
+    "inbound": {
+        "type": "flight",
+        "name": "MU1234",
+        "number": "MU1234",
+        "departure_point": "杭州萧山机场",
+        "arrival_point": "上海虹桥机场",
+        "departure_time": "2026-12-06T18:00:00",
+        "arrival_time": "2026-12-06T19:00:00",
+        "purchased": True,
+    },
+    "stays": [
+        {
+            "hotel": "测试酒店",
+            "city": "杭州",
+            "address": "测试地址",
+            "check_in": "2026-12-04",
+            "check_out": "2026-12-06",
+            "booked": True,
+        }
+    ],
+}
+
+
 @pytest.fixture
 def itinerary():
-    return {
-        "origin": "上海",
-        "destination": "杭州",
-        "outbound": {
-            "type": "train",
-            "name": "G123",
-            "number": "G123",
-            "departure_point": "上海虹桥",
-            "arrival_point": "杭州东",
-            "departure_time": "2026-12-04T09:00:00",
-            "arrival_time": "2026-12-04T10:00:00",
-            "purchase_url": "https://example.com/train",
-            "purchased": False,
-        },
-        "inbound": {
-            "type": "flight",
-            "name": "MU1234",
-            "number": "MU1234",
-            "departure_point": "杭州萧山机场",
-            "arrival_point": "上海虹桥机场",
-            "departure_time": "2026-12-06T18:00:00",
-            "arrival_time": "2026-12-06T19:00:00",
-            "purchased": True,
-        },
-        "stays": [
-            {
-                "hotel": "测试酒店",
-                "city": "杭州",
-                "address": "测试地址",
-                "check_in": "2026-12-04",
-                "check_out": "2026-12-06",
-                "booked": True,
-            }
-        ],
-    }
+    return deepcopy(ITINERARY)
 
 
 def test_valid_trip_and_day_trip(itinerary):
@@ -85,26 +88,61 @@ def test_transport_schema(itinerary):
         Trip.model_validate(itinerary)
 
 
-def test_confirmation_tool_and_conversation_isolation(configured, itinerary):
-    store = TripStore()
+def test_proposal_ends_run_and_confirmation_uses_pending(
+    configured, itinerary, tmp_path
+):
+    store = TripStore(database=tmp_path / "travel.db")
     agent = agent_module.create_agent()
+    calls = 0
+
+    def propose(messages, info):
+        nonlocal calls
+        calls += 1
+        return ModelResponse(
+            parts=[
+                ToolCallPart("present_trip", itinerary, tool_call_id="proposal-1"),
+                ToolCallPart("confirm_trip", {}),
+            ]
+        )
+
+    with agent.override(model=FunctionModel(propose)):
+        result = agent.run_sync("选好了", deps=store, conversation_id="chat-a")
+    assert calls == 1
+    assert result.output == Trip.model_validate(itinerary)
+    assert store.get("chat-a") is None
+    assert store.get_state("chat-a")["pending_id"] == "proposal-1"
+    assert store.get_state("chat-b")["pending_trip"] is None
+
+    def confirm(messages, info):
+        if messages[-1].parts[0].part_kind == "tool-return":
+            return ModelResponse(parts=[TextPart("开始每日规划")])
+        return ModelResponse(parts=[ToolCallPart("confirm_trip", {})])
+
+    with agent.override(model=FunctionModel(confirm)):
+        agent.run_sync("确认", deps=store, conversation_id="chat-a")
+        missing = agent.run_sync("确认", deps=store, conversation_id="chat-b")
+    assert store.get("chat-a") == result.output
+    assert store.get_state("chat-a")["pending_trip"] is None
+    assert "没有待确认方案" in str(missing.all_messages())
+
+
+def test_invalid_proposal_retries_without_saving(configured, itinerary, tmp_path):
+    store = TripStore(database=tmp_path / "travel.db")
+    itinerary["stays"] = []
+    calls = 0
 
     def model(messages, info):
-        if messages[-1].parts[0].part_kind == "tool-return":
-            return ModelResponse(parts=[TextPart("完成")])
-        return ModelResponse(parts=[ToolCallPart("confirm_trip", {"trip": itinerary})])
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(parts=[ToolCallPart("present_trip", itinerary)])
+        assert "住宿缺失" in str(messages[-1])
+        return ModelResponse(parts=[TextPart("需要补齐住宿")])
 
+    agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        agent.run_sync("确认这套安排", deps=store, conversation_id="chat-a")
-        saved = store.confirmed["chat-a"].model_dump()
-        assert not store.confirmed["chat-a"].outbound.purchased
-        assert "chat-b" not in store.confirmed
-        itinerary["stays"] = []
-        result = agent.run_sync("确认另一套安排", deps=store, conversation_id="chat-b")
-        assert "chat-b" not in store.confirmed
-        assert "住宿缺失" in str(result.all_messages())
-        agent.run_sync("修改安排", deps=store, conversation_id="chat-a")
-        assert store.confirmed["chat-a"].model_dump() == saved
+        agent.run_sync("展示方案", deps=store, conversation_id="chat-a")
+    assert store.get_state("chat-a")["pending_trip"] is None
 
 
 def test_time_is_a_tool(configured):
@@ -160,26 +198,57 @@ def test_bus_to_scenic_destination(itinerary):
         Trip.model_validate(itinerary)
 
 
-@pytest.mark.parametrize("persistent", [False, True])
-def test_trip_store_save_update_isolation_and_delete(tmp_path, itinerary, persistent):
-    database = tmp_path / "旅行?#.db" if persistent else None
+def test_trip_store_save_update_isolation_and_delete(tmp_path, itinerary):
+    database = tmp_path / "旅行?#.db"
     store = TripStore(database=database)
     trip = Trip.model_validate(itinerary)
     assert store.get("missing") is None
     store.delete("missing")
-    store.save("chat-a", trip)
-    store.save("chat-b", trip)
+    store.present("chat-a", trip, "a1")
+    store.confirm("chat-a")
+    store.present("chat-b", trip, "b1")
+    store.confirm("chat-b")
     updated = trip.model_copy(deep=True)
     updated.outbound.purchased = True
     updated.outbound.purchase_url = None
-    store.save("chat-a", updated)
-    if persistent:
-        store = TripStore(database=database)
+    store.present("chat-a", updated, "a2")
+    assert store.get("chat-a") == trip
+    store = TripStore(database=database)
+    assert store.get_state("chat-a")["pending_trip"] == updated
+    with pytest.raises(ValueError, match="已更新"):
+        store.confirm("chat-a", "a1")
+    store.confirm("chat-a", "a2")
+    assert store.get_state("chat-a")["confirmed_id"] == "a2"
+    with pytest.raises(ValueError, match="没有待确认"):
+        store.confirm("chat-a")
+    store = TripStore(database=database)
     assert store.get("chat-a") == updated
     assert store.get("chat-b") == trip
     store.delete("chat-a")
     store.delete("chat-a")
-    if persistent:
-        store = TripStore(database=database)
+    store = TripStore(database=database)
     assert store.get("chat-a") is None
     assert store.get("chat-b") == trip
+
+
+def test_pending_schema_upgrade_preserves_confirmed_trip(tmp_path, itinerary):
+    import sqlite3
+    from settings import ROOT
+
+    database = tmp_path / "old.db"
+    trip = Trip.model_validate(itinerary)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE trips (conversation_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO trips VALUES (?, ?)", ("chat-a", trip.model_dump_json())
+        )
+        connection.commit()
+        connection.executescript((ROOT / "migrations/001_trip_pending.sql").read_text())
+    store = TripStore(database=database)
+    assert store.get("chat-a") == trip
+    assert store.get_state("chat-a")["pending_trip"] is None
+    store.present("chat-b", trip, "new")
+    assert store.get("chat-b") is None
+    assert store.confirm("chat-b") == trip

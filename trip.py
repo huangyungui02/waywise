@@ -1,4 +1,4 @@
-"""直达、单目的地旅行的基础安排；只保存用户明确确认的方案。"""
+"""直达、单目的地旅行的基础安排；保存待确认和已确认方案。"""
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -91,50 +91,74 @@ class TripRecord(SQLModel, table=True):
     __tablename__ = "trips"
 
     conversation_id: str = Field(primary_key=True)
-    data: str = Field(sa_type=Text)
+    data: str | None = Field(default=None, sa_type=Text)
+    pending_data: str | None = Field(default=None, sa_type=Text)
+    pending_id: str | None = None
+    confirmed_id: str | None = None
 
 
 @dataclass
 class TripStore:
-    """按会话保存确认安排；配置 database 时持久化，测试默认使用内存。"""
+    """通过 SQLite 按会话保存待确认和已确认安排。"""
 
-    confirmed: dict[str, Trip] = field(default_factory=dict)
-    database: Path | None = None
-    _engine: Engine | None = field(default=None, init=False, repr=False)
+    database: Path
+    _engine: Engine = field(init=False, repr=False)
 
     def __post_init__(self):
-        if self.database is not None:
-            # 与官方 Store 共用 SQLite 文件，每个 Session 结束后关闭连接。
-            self._engine = create_engine(
-                URL.create("sqlite", database=str(self.database)), poolclass=NullPool
+        # 与官方 Store 共用 SQLite 文件，每个 Session 结束后关闭连接。
+        self._engine = create_engine(
+            URL.create("sqlite", database=str(self.database)), poolclass=NullPool
+        )
+        SQLModel.metadata.create_all(self._engine)
+
+    def present(self, conversation_id: str, trip: Trip, proposal_id: str) -> None:
+        with Session(self._engine) as session:
+            record = session.get(TripRecord, conversation_id) or TripRecord(
+                conversation_id=conversation_id
             )
-            SQLModel.metadata.create_all(self._engine)
+            record.pending_data = trip.model_dump_json()
+            record.pending_id = proposal_id
+            session.add(record)
+            session.commit()
 
-    def save(self, conversation_id: str, trip: Trip) -> None:
-        if self._engine is None:
-            self.confirmed[conversation_id] = trip
-        else:
-            with Session(self._engine) as session:
-                session.merge(
-                    TripRecord(
-                        conversation_id=conversation_id, data=trip.model_dump_json()
-                    )
-                )
-                session.commit()
-
-    def get(self, conversation_id: str) -> Trip | None:
-        if self._engine is None:
-            return self.confirmed.get(conversation_id)
+    def confirm(self, conversation_id: str, proposal_id: str | None = None) -> Trip:
         with Session(self._engine) as session:
             record = session.get(TripRecord, conversation_id)
-            return Trip.model_validate_json(record.data) if record is not None else None
+            if record is None or record.pending_data is None:
+                raise ValueError("没有待确认方案，请先整理交通和住宿。")
+            if proposal_id is not None and record.pending_id != proposal_id:
+                raise ValueError("方案已更新，请确认最新方案。")
+            trip = Trip.model_validate_json(record.pending_data)
+            if issues := trip.issues():
+                raise ValueError("；".join(issues))
+            record.data = record.pending_data
+            record.confirmed_id = record.pending_id
+            record.pending_data = None
+            record.pending_id = None
+            session.add(record)
+            session.commit()
+            return trip
+
+    def get_state(self, conversation_id: str) -> dict:
+        with Session(self._engine) as session:
+            record = session.get(TripRecord, conversation_id)
+            return {
+                "trip": Trip.model_validate_json(record.data)
+                if record and record.data
+                else None,
+                "pending_trip": Trip.model_validate_json(record.pending_data)
+                if record and record.pending_data
+                else None,
+                "pending_id": record.pending_id if record else None,
+                "confirmed_id": record.confirmed_id if record else None,
+            }
+
+    def get(self, conversation_id: str) -> Trip | None:
+        return self.get_state(conversation_id)["trip"]
 
     def delete(self, conversation_id: str) -> None:
-        if self._engine is None:
-            self.confirmed.pop(conversation_id, None)
-        else:
-            with Session(self._engine) as session:
-                record = session.get(TripRecord, conversation_id)
-                if record is not None:
-                    session.delete(record)
-                    session.commit()
+        with Session(self._engine) as session:
+            record = session.get(TripRecord, conversation_id)
+            if record is not None:
+                session.delete(record)
+                session.commit()
