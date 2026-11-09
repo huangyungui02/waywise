@@ -143,17 +143,18 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 项目基于 [PydanticAI](https://pydantic.dev/docs/ai/llms.txt)，接入高德地图与[飞猪 Skill](https://github.com/alibaba-flyai/flyai-skill)。
 开发前请阅读 [AGENTS.md](AGENTS.md)，飞猪上游文件来源见 [skills/UPSTREAM.md](skills/UPSTREAM.md)。
 
-本地开发需要 Python 3.12+、uv、Node.js 22.12+ 和 npm。安装依赖并配置 `.env`：
+本地开发需要 Python 3.12+、uv、Node.js 22.18+ 和 pnpm 10。安装依赖并配置 `.env`：
 
 ```bash
 uv sync
 npm install -g @fly-ai/flyai-cli@1.0.16
-npm --prefix frontend ci
+corepack enable
+pnpm --dir frontend install --frozen-lockfile
 ```
 
 后端模块保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
-`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Tailwind CSS 和 shadcn/ui。页面组件在 `src/components/`，
-官方 UI 组件在 `src/components/ui/`；`src/style.css` 只保留样式导入和主题配置。
+`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
+官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
 
 先确保本地 Redis 在 `localhost:6372` 运行；也可以只启动 Compose 中的 Redis：
 
@@ -165,13 +166,13 @@ docker compose up -d redis
 
 ```bash
 uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
-npm --prefix frontend run dev
+pnpm --dir frontend dev
 ```
 
 打开 Vite 打印的地址（通常为 `http://127.0.0.1:5173`）。
 API 文档位于 `http://127.0.0.1:7932/docs`。
 本地开发默认数据库为 `data/travel.db`，可通过 `DATABASE_PATH` 修改。
-若需由本地后端托管前端，先执行 `npm --prefix frontend run build`。
+若需由本地后端托管前端，先执行 `pnpm --dir frontend build`。
 
 运行离线测试：
 
@@ -182,8 +183,8 @@ uv run python -m pytest -q
 浏览器测试会自动启动离线测试后端和前端，无需真实凭据：
 
 ```bash
-npm --prefix frontend exec -- playwright install chromium
-npm --prefix frontend run test:e2e
+pnpm --dir frontend exec playwright install chromium
+pnpm --dir frontend test:e2e
 ```
 
 Python 默认使用 SDK 边界的本地替身和 FakeRedis，不依赖本地 Redis。

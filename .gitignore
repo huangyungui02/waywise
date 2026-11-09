@@ -5,7 +5,9 @@ __pycache__/
 .pydantic-ai-harness/
 node_modules/
 data/
-frontend/dist/
+frontend/build/
+frontend/.svelte-kit/
 *.tsbuildinfo
 frontend/test-results/
 frontend/playwright-report/
+.agents/

@@ -1,9 +1,10 @@
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
-RUN npm run build
+RUN pnpm build
 
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
@@ -25,7 +26,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY agent.py app.py replies.py settings.py trip.py instructions.md ./
 COPY skills/ ./skills/
-COPY --from=frontend /build/dist ./frontend/dist
+COPY --from=frontend /build/build ./frontend/build
 RUN useradd --create-home traveler \
     && mkdir /app/data \
     && chown -R traveler:traveler /app

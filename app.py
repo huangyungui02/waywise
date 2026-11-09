@@ -197,9 +197,9 @@ def create_app() -> FastAPI:
         )
 
     # 开发时 Vite 代理 /api；构建后由同一个 FastAPI 服务托管静态页面。
-    dist = ROOT / "frontend" / "dist"
+    dist = ROOT / "frontend" / "build"
     if dist.is_dir():
-        api.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+        api.mount("/_app", StaticFiles(directory=dist / "_app"), name="assets")
 
         @api.get("/{path:path}", include_in_schema=False)
         async def frontend(path: str):
