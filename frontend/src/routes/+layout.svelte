@@ -11,6 +11,9 @@
 	import { forgetConversation } from '#lib/chat/cache.js';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
+	let title = $derived(
+		data.conversations.find((conversation) => conversation.id === page.params.id)?.title ?? '知途'
+	);
 	let mobileOpen = $state(false);
 	let deleting = $state<Conversation | null>(null);
 	let removing = $state(false);
@@ -92,20 +95,16 @@
 <div class="flex h-dvh w-full overflow-hidden sm:p-2.5 md:p-3">
 	<aside class="hidden w-60 shrink-0 md:block">{@render sidebar()}</aside>
 	<div class="arc-window">
-		<header class="flex h-14 shrink-0 items-center justify-between px-4 md:hidden">
+		<header
+			class="grid h-14 shrink-0 grid-cols-[2.25rem_minmax(0,1fr)_2.25rem] items-center gap-2 px-4 md:hidden"
+		>
 			<Button
 				variant="ghost"
 				size="icon"
 				aria-label="打开旅行列表"
 				onclick={() => (mobileOpen = true)}><Menu /></Button
 			>
-			<a href={resolve('/')} class="font-serif">知途</a><Button
-				onclick={() => goto(resolve('/'))}
-				disabled={page.url.pathname === '/'}
-				variant="ghost"
-				size="icon"
-				aria-label="新建旅行"><Plus /></Button
-			>
+			<h1 class="truncate text-center font-serif" {title}>{title}</h1>
 		</header>
 		{#if error}<p role="alert" class="p-3 text-sm text-destructive">
 				{error}<Button variant="ghost" onclick={() => (error = '')}>关闭错误提示</Button>

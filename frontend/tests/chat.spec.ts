@@ -64,12 +64,16 @@ for (const mobile of [false, true]) {
 		await page.goto('/');
 		const existing = await (await page.request.get('/api/conversations')).json();
 		const newTravel = page.getByRole('button', {
-			name: mobile ? '新建旅行' : '开始一段旅行',
+			name: '开始一段旅行',
 			exact: true
 		});
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 		await expect(newTravel).toBeDisabled();
+		if (mobile) await page.keyboard.press('Escape');
 		await page.getByLabel('目的地', { exact: true }).fill('四姑娘山');
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 		await expect(newTravel).toBeDisabled();
+		if (mobile) await page.keyboard.press('Escape');
 		expect(creates).toBe(0);
 		expect(await (await page.request.get('/api/conversations')).json()).toHaveLength(
 			existing.length
@@ -77,10 +81,13 @@ for (const mobile of [false, true]) {
 		await page.getByRole('button', { name: '发送', exact: true }).click();
 		await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
 		expect(creates).toBe(1);
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 		await newTravel.click();
 		await expect(page).toHaveURL('http://127.0.0.1:5179/');
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 		await expect(newTravel).toBeDisabled();
 		await page.reload();
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 		await expect(newTravel).toBeDisabled();
 		expect(creates).toBe(1);
 		expect(await (await page.request.get('/api/conversations')).json()).toHaveLength(
@@ -167,6 +174,10 @@ test('手机界面可输入、发送和读取历史，页面没有横向溢出',
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('开始旅行');
 	await page.getByRole('button', { name: '发送', exact: true }).click();
 	await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
+	const id = page.url().split('/').at(-1);
+	const detail = await (await page.request.get(`/api/conversations/${id}`)).json();
+	await expect(page.locator('header h1')).toHaveText(detail.summary.title);
+	await expect(page.getByRole('button', { name: '新建旅行', exact: true })).toHaveCount(0);
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('我想去重庆');
 	await page.getByRole('button', { name: '发送', exact: true }).click();
 	await expect(page.getByText('收到你的旅行想法：我想去重庆。')).toBeVisible();
@@ -436,9 +447,7 @@ for (const mobile of [false, true]) {
 		await page.goto('/');
 		for (const newConversation of [false, true]) {
 			if (newConversation)
-				await page
-					.getByRole('button', { name: mobile ? '新建旅行' : '开始一段旅行', exact: true })
-					.click();
+				await page.getByRole('button', { name: '开始一段旅行', exact: true }).click();
 			const card = page.getByRole('region', { name: '旅行基本信息' });
 			await expect(card.getByRole('textbox')).toHaveCount(2);
 			await expect(card.getByRole('spinbutton')).toHaveCount(2);
