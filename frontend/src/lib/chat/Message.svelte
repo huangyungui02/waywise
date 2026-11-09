@@ -47,7 +47,7 @@
 			{#each message.parts as part, i (`${message.id}-${i}`)}
 				{#if part.type === 'text'}
 					<p
-						class="rounded-xl bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-primary-foreground selection:bg-[#d9eee3] selection:text-[#19382e]"
+						class="rounded-xl bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-primary-foreground selection:bg-secondary selection:text-secondary-foreground"
 					>
 						{part.text}
 					</p>
@@ -59,7 +59,7 @@
 			{#each groups as group (group.key)}
 				{#if group.type === 'text'}<Markdown text={group.text} />
 				{:else if group.type === 'proposal'}
-					<section aria-label="交通与住宿方案" class="pure-capsule p-4">
+					<section aria-label="交通与住宿方案" class="rounded-xl bg-card/70 p-4 shadow-xs">
 						<TripCard
 							trip={group.trip}
 							status={detail.pending_id === group.id

@@ -141,8 +141,8 @@ test('新建、发送、工具展示、刷新恢复、切换与删除', async ({
 	});
 	expect(selection).toEqual({
 		text: prompt,
-		color: 'rgb(25, 56, 46)',
-		background: 'rgb(217, 238, 227)'
+		color: 'rgb(31, 35, 33)',
+		background: 'rgb(238, 234, 224)'
 	});
 	await page.evaluate(() => window.getSelection()?.removeAllRanges());
 	await expect(page.getByText('核对北京时间')).toBeVisible();
@@ -241,7 +241,7 @@ test('表单合并发送后显示原文，刷新恢复文字，聊天调整需�
 	).text;
 	const userMessage = page.locator('article').first();
 	await expect(userMessage.locator('p')).toHaveText(sentText);
-	await expect(userMessage.locator('.pure-capsule, .sr-only')).toHaveCount(0);
+	await expect(userMessage.locator('.sr-only')).toHaveCount(0);
 	await expect(page.getByLabel('出发地', { exact: true })).toHaveCount(0);
 	await page.reload();
 	await expect(page.getByRole('button', { name: '修改需求' })).toHaveCount(0);
@@ -481,6 +481,15 @@ for (const mobile of [false, true]) {
 			await expect(page.getByText('旅行想法与期待', { exact: true })).toHaveCount(0);
 			await expect(page.getByRole('button', { name: '开始规划', exact: true })).toHaveCount(0);
 			const composer = page.getByRole('textbox', { name: '旅行需求' });
+			const lineCenterOffset = await composer.evaluate((element) => {
+				const style = getComputedStyle(element);
+				const box = element.getBoundingClientRect();
+				const form = element.closest('form')!.getBoundingClientRect();
+				const lineCenter = box.y + parseFloat(style.paddingTop) + parseFloat(style.lineHeight) / 2;
+				return Math.abs(lineCenter - (form.y + form.height / 2));
+			});
+			expect(lineCenterOffset).toBeLessThan(1);
+
 			await expect(composer).toBeInViewport();
 			await expect(page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
 			await page.getByLabel('目的地', { exact: true }).fill('四姑娘山');
@@ -950,7 +959,12 @@ for (const mobile of [false, true]) {
 		const conversation = await (await page.request.post('/api/conversations')).json();
 		await page.goto(`/chat/${conversation.id}`);
 		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
-		await page.getByRole('button', { name: `更多操作 ${conversation.title}`, exact: true }).click();
+		await page
+			.getByRole('navigation', { name: '我的旅行' })
+			.locator('a[aria-current="page"]')
+			.locator('..')
+			.getByRole('button', { name: `更多操作 ${conversation.title}`, exact: true })
+			.click();
 		await page.getByRole('button', { name: '重命名', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: '重命名', exact: true });
 		await expect(dialog).toBeVisible();

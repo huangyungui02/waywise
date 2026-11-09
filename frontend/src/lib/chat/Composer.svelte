@@ -40,7 +40,7 @@
 >
 	<form
 		onsubmit={submit}
-		class="composer liquid-glass pointer-events-auto mx-auto flex max-w-2xl items-end gap-2 rounded-[2rem] p-2 pl-5"
+		class="liquid-glass pointer-events-auto mx-auto flex max-w-2xl items-center gap-2 rounded-[2rem] p-2 pl-5 transition-[border-color,box-shadow] focus-within:border-primary/30"
 	>
 		<Textarea
 			aria-label="旅行需求"
@@ -53,13 +53,13 @@
 					event.currentTarget.form?.requestSubmit();
 				}
 			}}
-			class="max-h-32 min-h-6 flex-1 resize-none border-0 bg-transparent py-1 shadow-none focus-visible:border-transparent focus-visible:ring-0"
+			class="max-h-32 min-h-9 flex-1 resize-none border-0 bg-transparent py-2 leading-5 shadow-none focus-visible:border-transparent focus-visible:ring-0"
 		/>
 		{#if busy && onstop}
 			<Button
 				type="button"
 				size="icon"
-				class="size-9 shrink-0 rounded-full"
+				class="size-9 shrink-0 self-end rounded-full"
 				variant="ghost"
 				onclick={onstop}
 				aria-label="停止"><Square /></Button
@@ -68,7 +68,7 @@
 			<Button
 				type="submit"
 				size="icon"
-				class="size-9 shrink-0 rounded-full"
+				class="size-9 shrink-0 self-end rounded-full"
 				disabled={!canSend || busy}
 				aria-label="发送"
 			>
@@ -77,17 +77,3 @@
 		{/if}
 	</form>
 </div>
-
-<style>
-	.composer {
-		transition:
-			box-shadow 180ms ease,
-			border-color 180ms ease;
-	}
-	.composer:focus-within {
-		border-color: color-mix(in srgb, var(--primary) 25%, white);
-		box-shadow:
-			0 12px 40px -12px rgb(25 56 46 / 22%),
-			inset 0 1px 0 rgb(255 255 255 / 95%);
-	}
-</style>

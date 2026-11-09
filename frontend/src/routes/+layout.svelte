@@ -147,7 +147,9 @@
 {/snippet}
 <div class="flex h-dvh w-full overflow-hidden sm:p-2.5 md:p-3">
 	<aside class="hidden w-60 shrink-0 md:block">{@render sidebar()}</aside>
-	<div class="arc-window">
+	<div
+		class="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-card/80 shadow-sm"
+	>
 		<header
 			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] md:hidden"
 		>

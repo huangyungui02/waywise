@@ -1,8 +1,9 @@
 <script lang="ts">
+	import * as Field from '#lib/components/ui/field/index.js';
 	import { parseDate } from '@internationalized/date';
 	import { Calendar } from '#lib/components/ui/calendar/index.js';
 	import * as Popover from '#lib/components/ui/popover/index.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	let {
 		label,
 		value = $bindable(''),
@@ -12,10 +13,13 @@
 	let selected = $derived(value ? parseDate(value) : undefined);
 </script>
 
-<div class="flex min-w-0 flex-col gap-2">
-	<span class="text-xs text-muted-foreground">{label}</span>
+<Field.Field>
+	<Field.Label for={label}>{label}</Field.Label>
 	<Popover.Root bind:open>
-		<Popover.Trigger class="pure-field text-left" aria-label={label}
+		<Popover.Trigger
+			id={label}
+			class={buttonVariants({ variant: 'outline', class: 'w-full justify-start' })}
+			aria-label={label}
 			>{selected ? `${selected.month}月${selected.day}日` : '选择日期'}</Popover.Trigger
 		>
 		<Popover.Content role="dialog" class="w-auto p-2" aria-label={label} align="start">
@@ -41,4 +45,4 @@
 			>
 		</Popover.Content>
 	</Popover.Root>
-</div>
+</Field.Field>

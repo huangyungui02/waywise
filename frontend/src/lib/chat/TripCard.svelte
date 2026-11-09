@@ -26,7 +26,7 @@
 		{trip.origin} → {trip.destination}。如需调整，在聊天中告诉我即可重新确认。
 	</p>
 	{#each [{ label: '去程', leg: trip.outbound }, { label: '回程', leg: trip.inbound }] as { label, leg } (label)}
-		<div class="pure-capsule flex flex-col gap-3 p-4">
+		<div class="flex flex-col gap-3 rounded-xl bg-card/70 p-4 shadow-xs">
 			<div class="flex justify-between text-xs">
 				<span
 					>{label} · {{ train: '高铁 / 火车', flight: '机票航班', bus: '大巴 / 景区直通车' }[
@@ -56,7 +56,7 @@
 		</div>
 	{/each}
 	{#each trip.stays as stay (`${stay.hotel}-${stay.check_in}`)}
-		<div class="pure-capsule flex flex-col gap-2 p-4">
+		<div class="flex flex-col gap-2 rounded-xl bg-card/70 p-4 shadow-xs">
 			<h4 class="font-serif text-sm">{stay.hotel}</h4>
 			<p class="text-xs text-muted-foreground">{stay.address}</p>
 			<p class="text-xs">{stay.check_in} 入住 · {stay.check_out} 退房</p>

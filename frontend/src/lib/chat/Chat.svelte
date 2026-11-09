@@ -105,7 +105,7 @@
 			/>{/each}
 		{#if conversation.detail.trip && !conversation.detail.confirmed_id}<section
 				aria-label="交通与住宿方案"
-				class="pure-capsule p-4"
+				class="rounded-xl bg-card/70 p-4 shadow-xs"
 			>
 				<TripCard trip={conversation.detail.trip} status="confirmed" />
 			</section>{/if}
