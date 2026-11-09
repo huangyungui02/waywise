@@ -30,6 +30,8 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 | `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 Web 服务类型 Key |
 | `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
 | `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`），需支持 Responses 接口、内置搜索和工具调用 |
+| `REDIS_URL` | 否 | 本地默认 `redis://localhost:6372/0`；Compose 自动使用内网 Redis |
+| `REPLY_RETENTION_SECONDS` | 否 | 回复结束后事件保留秒数，默认 `86400`（24 小时） |
 | `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
 
 Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
@@ -57,6 +59,10 @@ docker compose down
 聊天和行程保存在 Docker 命名卷 `travel-data` 的 `/app/data/travel.db`，
 重建镜像或执行上述停止命令会保留数据。请勿使用 `docker compose down -v`，它会删除数据卷。
 Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发使用。
+
+Compose 同时启动 Redis，应用等待其健康检查通过后启动。Redis 使用 `redis-data` 卷和 AOF，
+容器间通过 `redis:6379` 连接；宿主机仅在 `127.0.0.1:6372` 提供访问。
+Redis 保存临时回复事件，结束后默认保留 24 小时；长期历史和行程仍在 SQLite 中。
 
 备份时先停止服务，再复制整个数据目录：
 
@@ -121,11 +127,15 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 
 - 暂不支持中转、多目的地或非酒店住宿；凌晨入住等特殊安排需额外核对。
 - 价格、余票、房态和退改规则以预订页面为准，售票期外可能无法查询。
-- 关闭页面、切换会话或停止生成会中断当前回复，保留已保存的消息和完整步骤；重新打开后可继续咨询，不会自动重跑中断的工具。
-- 当前适合本地单进程运行，尚未提供用户登录和多用户数据隔离；暂不启动多个服务进程共享数据库。
-- Tauri 移动端尚未接入。
+- 关闭页面、刷新或切换会话后，只要后端服务仍在运行，回复会继续生成；返回会话可查看最新输出并接收后续内容。点击“停止”才会取消生成，并保存已生成的部分回复。
+- 浏览器使用 IndexedDB 缓存已读取的消息以便快速预览；同步期间会显示提示，最终内容以服务端为准。清空浏览器缓存不会删除服务端历史。
+- 后台运行使用单个后端进程，默认最多同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整。服务重启会中断未完成的回复，保留已保存的消息和完整步骤，不会自动重跑工具；请勿配置多个后端 worker 或实例共享该数据库。
+- 尚未提供用户登录和多用户数据隔离，适合本地个人使用。
+- Capacitor 移动端尚未接入。
 
 ## 参与开发
+
+会话执行、恢复及缓存机制见 [会话恢复说明](docs/chat-recovery.md)。
 
 项目基于 [PydanticAI](https://pydantic.dev/docs/ai/llms.txt)，接入高德地图与[飞猪 Skill](https://github.com/alibaba-flyai/flyai-skill)。
 开发前请阅读 [AGENTS.md](AGENTS.md)，飞猪上游文件来源见 [skills/UPSTREAM.md](skills/UPSTREAM.md)。
@@ -142,7 +152,13 @@ npm --prefix frontend ci
 `settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Tailwind CSS 和 shadcn/ui。页面组件在 `src/components/`，
 官方 UI 组件在 `src/components/ui/`；`src/style.css` 只保留样式导入和主题配置。
 
-分别在两个终端启动后端和前端：
+先确保本地 Redis 在 `localhost:6372` 运行；也可以只启动 Compose 中的 Redis：
+
+```bash
+docker compose up -d redis
+```
+
+已有 Redis 可通过 `.env` 中的 `REDIS_URL` 指定地址。然后分别在两个终端启动后端和前端：
 
 ```bash
 uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
@@ -167,4 +183,11 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-测试不调用真实模型或旅游服务；实际使用需要配置凭据并验证服务可用性。
+Python 与浏览器测试默认使用 FakeRedis，不依赖本地 Redis，也不调用真实模型或旅游服务。
+需要验证真实 Redis Streams 时，可显式运行隔离键测试（不会清空 Redis）：
+
+```bash
+uv run python -m pytest -q tests/test_replies.py --redis-url redis://localhost:6372/0
+```
+
+实际模型、地图和飞猪服务需要另行配置凭据并验证。

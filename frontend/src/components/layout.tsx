@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { api } from "@/api";
+import { forgetConversation } from "@/chat/cache";
 import type { Conversation } from "@/api";
 
 export type TravelActions = {
@@ -110,6 +111,7 @@ export function Layout() {
     setRemoving(true);
     try {
       await api(`/conversations/${conversationId}`, { method: "DELETE" });
+      await forgetConversation(conversationId);
       setDeleting(null);
       await navigate("/");
       revalidator.revalidate();

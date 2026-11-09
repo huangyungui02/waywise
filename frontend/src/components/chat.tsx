@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useLocation, useRevalidator } from "react-router";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import type { LoadedConversation } from "@/chat/cache";
+import { useConversation } from "@/chat/use-conversation";
 import {
   ArrowDown,
   CircleAlert,
@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { Detail } from "@/api";
 import { Message } from "./message";
 import { TripCard } from "./trip-card";
 import { api } from "@/api";
@@ -17,11 +16,12 @@ import { TravelForm, travelPrompt } from "./travel-form";
 import { Composer } from "./composer";
 
 export function ChatRoute() {
-  const detail = useLoaderData() as Detail;
-  return <Chat key={detail.summary.id} detail={detail} />;
+  const loaded = useLoaderData() as LoadedConversation;
+  return <Chat key={loaded.detail.summary.id} loaded={loaded} />;
 }
 
-function Chat({ detail }: { detail: Detail }) {
+function Chat({ loaded }: { loaded: LoadedConversation }) {
+  const { detail, messages, sendMessage, status, error, recovering, synchronize } = useConversation(loaded);
   const revalidator = useRevalidator();
   const location = useLocation();
   const [confirming, setConfirming] = useState(false);
@@ -30,24 +30,6 @@ function Chat({ detail }: { detail: Detail }) {
   const initialSent = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
-  const [transport] = useState(
-    () =>
-      new DefaultChatTransport({
-        api: `/api/conversations/${detail.summary.id}/chat`,
-        prepareSendMessagesRequest: ({ id, messages }) => ({
-          body: { id, trigger: "submit-message", messages: messages.slice(-1) },
-        }),
-      }),
-  );
-  const { messages, sendMessage, stop, status, error } = useChat({
-    id: detail.summary.id,
-    messages: detail.messages,
-    transport,
-    onFinish: () => {
-      revalidator.revalidate();
-    },
-  });
-
   // 聚合连续的助手消息，确保刷新后工具调用记录依然整齐聚合在一个滚动容器内
   const displayMessages = useMemo(() => {
     const result: typeof messages = [];
@@ -73,17 +55,11 @@ function Chat({ detail }: { detail: Detail }) {
     }
   }, [location.state, detail.messages.length, sendMessage]);
 
-  const running = status === "submitted" || status === "streaming";
+  const running = (recovering && status !== "error") || status === "submitted" || status === "streaming" || detail.summary.outcome === "running";
   const latestMessage = messages.at(-1);
   const thinking = status === "streaming" && latestMessage?.role === "assistant" &&
     latestMessage.parts.some((part) => part.type === "reasoning" && part.state === "streaming");
 
-  useEffect(
-    () => () => {
-      void stop();
-    },
-    [stop],
-  );
 
   useEffect(() => {
     if (atBottom && scroller.current)
@@ -103,6 +79,9 @@ function Chat({ detail }: { detail: Detail }) {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8"
       >
         <div className="mx-auto max-w-2xl space-y-6 py-6 sm:py-8">
+          {recovering && !error && (
+            <div role="status" className="text-xs text-muted-foreground">正在同步最新进度…</div>
+          )}
           {!displayMessages.length && (
             <TravelForm values={values} onChange={setValues} />
           )}
@@ -147,11 +126,12 @@ function Chat({ detail }: { detail: Detail }) {
               <AlertDescription className="break-words text-xs leading-relaxed">
                 {confirmError || error?.message}
                 。已保存的记录可重新打开查看，或继续发送消息。
+                <Button variant="link" size="sm" onClick={() => void synchronize()}>重新同步</Button>
               </AlertDescription>
             </Alert>
           )}
 
-          {detail.summary.outcome === "cancelled" &&
+          {(detail.summary.outcome === "cancelled" || detail.summary.outcome === "failed") &&
             !running &&
             !error && (
               <Alert className="rounded-xl bg-white/60 backdrop-blur-md">
@@ -185,7 +165,16 @@ function Chat({ detail }: { detail: Detail }) {
       <Composer
         busy={running || confirming}
         hasFormValues={!displayMessages.length && Object.values(values).some((value) => value.trim())}
-        onStop={() => void stop()}
+        onStop={() => {
+          void (async () => {
+            try {
+              await api(`/conversations/${detail.summary.id}/chat/stop`, { method: "POST" });
+              await synchronize();
+            } catch (error) {
+              setConfirmError(error instanceof Error ? error.message : "停止失败，请重试");
+            }
+          })();
+        }}
         onSend={async (text) => {
           const input = displayMessages.length ? text : travelPrompt(values, text);
           setAtBottom(true);

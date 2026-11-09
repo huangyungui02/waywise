@@ -4,8 +4,15 @@ import os
 from pathlib import Path
 
 import anyio
+from fakeredis.aioredis import FakeRedis
 from pydantic_ai import Agent, RunContext, ToolOutput
-from pydantic_ai.messages import ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.messages import (
+    ModelResponse,
+    NativeToolCallPart,
+    NativeToolReturnPart,
+    TextPart,
+    UserPromptPart,
+)
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
 from app import create_app as create_backend
@@ -13,6 +20,8 @@ from settings import Settings
 from trip import Trip, TripStore
 from agent import present_trip
 from test_trip import ITINERARY
+
+search_replies: dict[str, anyio.Event] = {}
 
 
 async def stream(messages, info):
@@ -23,6 +32,42 @@ async def stream(messages, info):
         if isinstance(p, UserPromptPart)
     )
     if isinstance(messages[-1].parts[-1], UserPromptPart):
+        if prompt == "失败恢复测试":
+            yield "失败前已经生成的建议。"
+            raise RuntimeError("离线模型失败")
+        if str(prompt).startswith("搜索恢复测试"):
+            finished = search_replies[str(prompt)] = anyio.Event()
+            yield {0: DeltaThinkingPart(content="首次思考，不应展示")}
+            yield "好的，继续。"
+            yield "最后核实回程班车的班次，确认后即可锁定方案。"
+            yield {
+                1: NativeToolCallPart(
+                    "web_search", {"query": "回程班车"}, tool_call_id="search-test"
+                )
+            }
+            yield {
+                2: NativeToolReturnPart(
+                    "web_search", {"status": "completed"}, tool_call_id="search-test"
+                )
+            }
+            yield {3: DeltaThinkingPart(content="搜索后的思考，不应展示")}
+            try:
+                await finished.wait()
+            finally:
+                search_replies.pop(str(prompt), None)
+            yield {
+                4: DeltaToolCall(
+                    name="present_trip",
+                    json_args=Trip.model_validate(ITINERARY).model_dump_json(),
+                    tool_call_id="search-proposal",
+                )
+            }
+            return
+        if prompt == "后台测试":
+            yield "正在后台整理旅行…"
+            await anyio.sleep(3)
+            yield "后台旅行建议已完成。"
+            return
         if prompt == "思考测试":
             yield {0: DeltaThinkingPart(content="这是不应展示的思考内容")}
             await anyio.sleep(2)
@@ -115,7 +160,7 @@ def create_app():
             ]
         )
 
-    return create_backend(
+    backend = create_backend(
         Settings(
             _env_file=None,
             DASHSCOPE_API_KEY="test-key",
@@ -125,4 +170,11 @@ def create_app():
         ),
         agent,
         title_model=FunctionModel(title),
+        redis_client=FakeRedis(decode_responses=True),
     )
+
+    @backend.post("/api/__test/finish-search")
+    async def finish_search(prompt: str):
+        search_replies[prompt].set()
+
+    return backend

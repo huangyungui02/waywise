@@ -1,32 +1,33 @@
 """FastAPI 会话接口，使用官方存储和 Vercel AI 流协议。"""
 
+from contextlib import asynccontextmanager
 from dataclasses import asdict, replace
 from typing import Any, cast
-from uuid import uuid4
 
 import anyio
 import logfire
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic_ai import Agent, RunContext
-from pydantic_ai.capabilities import Hooks
+from pydantic_ai import Agent
 from pydantic_ai.direct import model_request
+from pydantic_ai.exceptions import RunCancelled
 from pydantic_ai.messages import ModelMessage, ModelRequest, TextPart, UserPromptPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModelSettings
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage, TextUIPart
 from pydantic_ai.usage import UsageLimits
+from redis.asyncio import Redis
 from pydantic_ai_harness import StepPersistence
 from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import (
     ConversationSummary,
     SqliteConversationStore,
 )
-from starlette.background import BackgroundTask
 
 from agent import create_agent
+from replies import ReplyStore, RunningReply
 from settings import ROOT, Settings
 from trip import Trip, TripStore
 
@@ -36,6 +37,7 @@ def create_app(
     agent: Agent[TripStore, str | Trip] | None = None,
     *,
     title_model: Model | str | None = None,
+    redis_client: Redis | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     database = settings.database_path
@@ -43,11 +45,56 @@ def create_app(
     conversations = SqliteConversationStore(database=database)
     steps = SqliteStepStore(database=database)
     trips = TripStore(database=database)
+    redis = (
+        redis_client
+        if redis_client is not None
+        else Redis.from_url(
+            settings.redis_url.get_secret_value(),
+            decode_responses=True,
+            protocol=2,
+            socket_connect_timeout=5,
+            socket_timeout=10,
+        )
+    )
+    reply_store = ReplyStore(redis, settings.reply_retention_seconds)
     agent = agent or create_agent(settings)
     title_model = title_model or agent.model
     assert title_model is not None
     busy: set[str] = set()
-    api = FastAPI(title="国内旅行助手")
+    replies: dict[str, RunningReply] = {}
+
+    @asynccontextmanager
+    async def lifespan(api: FastAPI):
+        async with redis:
+            await redis.ping()
+            # 仅在启动时收尾旧进程的运行，读取会话不改变执行状态。
+            summaries = []
+            while page := await conversations.listing(offset=len(summaries)):
+                summaries.extend(page)
+            for summary in summaries:
+                await reply_store.interrupt(summary.id)
+                if summary.outcome == "running":
+                    saved = await conversations.get(conversation_id=summary.id)
+                    runs = await steps.list_runs(conversation_id=summary.id)
+                    snapshot = (
+                        await steps.latest_snapshot(
+                            run_id=max(runs, key=lambda r: r.started_at).run_id
+                        )
+                        if runs
+                        else None
+                    )
+                    await conversations.save(
+                        summary=replace(summary, outcome="cancelled"),
+                        messages=snapshot.messages if snapshot else saved.messages,
+                    )
+            async with anyio.create_task_group() as tasks:
+                api.state.tasks = tasks
+                try:
+                    yield
+                finally:
+                    tasks.cancel_scope.cancel()
+
+    api = FastAPI(title="国内旅行助手", lifespan=lifespan)
     if token := settings.logfire_token.get_secret_value():
         telemetry = logfire.configure(
             local=True,
@@ -81,24 +128,9 @@ def create_app(
 
     async def load(conversation_id: str):
         try:
-            saved = await conversations.get(conversation_id=conversation_id)
+            return await conversations.get(conversation_id=conversation_id)
         except LookupError:
             raise HTTPException(404, "会话不存在") from None
-        if saved.summary.outcome == "running" and conversation_id not in busy:
-            runs = await steps.list_runs(conversation_id=conversation_id)
-            snapshot = (
-                await steps.latest_snapshot(
-                    run_id=max(runs, key=lambda r: r.started_at).run_id
-                )
-                if runs
-                else None
-            )
-            await conversations.save(
-                summary=replace(saved.summary, outcome="cancelled"),
-                messages=snapshot.messages if snapshot else saved.messages,
-            )
-            saved = await conversations.get(conversation_id=conversation_id)
-        return saved
 
     async def name_conversation(summary: ConversationSummary, text: str):
         try:
@@ -139,40 +171,76 @@ def create_app(
         except Exception:
             logfire.warn("会话标题生成失败，保留首条消息标题")
 
-    def chat_persistence(
+    async def produce_reply(
+        reply: RunningReply,
         summary: ConversationSummary,
         messages: list[ModelMessage],
-        run_id: str,
+        history: list[ModelMessage],
         first_message: str | None,
-    ) -> Hooks:
-        hooks = Hooks()
+    ):
+        persisted = False
+        outcome = "failed"
+        interrupted = False
 
-        @hooks.on.run
-        async def persist_run(ctx: RunContext[TripStore], *, handler):
-            try:
-                result = await handler()
-            except BaseException:
-                # 包括浏览器断连；只恢复最后一个完整步骤，不重放未完成的工具。
-                with anyio.CancelScope(shield=True):
-                    snapshot = await steps.latest_snapshot(run_id=run_id)
-                    await conversations.save(
-                        summary=replace(summary, outcome="cancelled"),
-                        messages=snapshot.messages if snapshot else messages,
-                    )
-                raise
-            else:
-                with anyio.CancelScope(shield=True):
-                    completed = await conversations.save(
-                        summary=replace(summary, outcome="completed"),
-                        messages=result.all_messages(),
-                    )
-                    if first_message is not None:
-                        await name_conversation(completed, first_message)
-                return result
-            finally:
-                busy.discard(summary.id)
+        async def completed(result):
+            nonlocal persisted, outcome
+            outcome = "completed"
+            saved = await conversations.save(
+                summary=replace(summary, outcome="completed"),
+                messages=result.all_messages(),
+            )
+            persisted = True
+            if first_message is not None:
+                await name_conversation(saved, first_message)
 
-        return hooks
+        async def cancelled(result: RunCancelled):
+            nonlocal persisted, outcome
+            outcome = "cancelled"
+            await conversations.save(
+                summary=replace(summary, outcome="cancelled"),
+                messages=result.all_messages(),
+            )
+            persisted = True
+
+        try:
+            async for chunk in reply.adapter.run_stream(
+                message_history=history,
+                conversation_id=summary.id,
+                run_id=reply.run_id,
+                deps=trips,
+                usage_limits=UsageLimits(request_limit=None),
+                capabilities=[StepPersistence(store=steps)],
+                cancellation_token=reply.cancellation,
+                on_complete=completed,
+                on_cancel=cancelled,
+            ):
+                await reply.append(chunk)
+        except anyio.get_cancelled_exc_class():
+            interrupted = True
+            raise
+        except Exception:
+            logfire.exception("后台回复执行失败")
+        finally:
+            with anyio.CancelScope(shield=True):
+                try:
+                    if not persisted:
+                        snapshot = await steps.latest_snapshot(run_id=reply.run_id)
+                        await conversations.save(
+                            summary=replace(
+                                summary,
+                                outcome="cancelled" if interrupted else "failed",
+                            ),
+                            messages=snapshot.messages if snapshot else messages,
+                        )
+                finally:
+                    try:
+                        await reply_store.finish(
+                            reply.run_id, "cancelled" if interrupted else outcome
+                        )
+                    finally:
+                        replies.pop(summary.id, None)
+                        busy.discard(summary.id)
+                        reply.finish()
 
     @api.get("/api/health")
     async def health():
@@ -192,9 +260,13 @@ def create_app(
 
     @api.get("/api/conversations/{conversation_id}")
     async def get_conversation(conversation_id: str):
+        if reply := replies.get(conversation_id):
+            await reply.ready.wait()
         saved = await load(conversation_id)
         state = await anyio.to_thread.run_sync(trips.get_state, conversation_id)
+        recovery = await reply_store.snapshot(conversation_id)
         return {
+            "recovery": recovery,
             "summary": asdict(saved.summary),
             "messages": [
                 m.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -224,25 +296,73 @@ def create_app(
 
     @api.delete("/api/conversations/{conversation_id}", status_code=204)
     async def delete_conversation(conversation_id: str):
+        saved = await load(conversation_id)
         if conversation_id in busy:
             raise HTTPException(409, "请先停止当前回复，再删除会话")
-        saved = await load(conversation_id)
-        await conversations.delete(source=saved.summary)
-        await anyio.to_thread.run_sync(trips.delete, conversation_id)
+        busy.add(conversation_id)
+        try:
+            await conversations.delete(source=saved.summary)
+            await anyio.to_thread.run_sync(trips.delete, conversation_id)
+            await reply_store.delete(conversation_id)
+        finally:
+            busy.discard(conversation_id)
+
+    @api.get("/api/conversations/{conversation_id}/chat/stream")
+    async def resume_chat(
+        conversation_id: str,
+        run_id: str | None = None,
+        after: str = Query(default="0-0", pattern=r"^\d+-\d+$"),
+    ):
+        await load(conversation_id)
+        reply = replies.get(conversation_id)
+        if run_id is not None:
+            snapshot = await reply_store.snapshot(conversation_id)
+            if snapshot is None or snapshot["run_id"] != run_id:
+                raise HTTPException(409, "回复已更新，请重新同步")
+            if tuple(map(int, after.split("-"))) > tuple(
+                map(int, snapshot["cursor"].split("-"))
+            ):
+                raise HTTPException(422, "进度游标超出范围")
+            # 已完成的运行也保留事件，消除详情读取与订阅之间的完成窗口。
+            if reply is None:
+                adapter = VercelAIAdapter(
+                    agent, SubmitMessage(id=conversation_id, messages=[]), sdk_version=6
+                )
+                reply = RunningReply(adapter, reply_store, run_id=run_id)
+                reply.finish()
+        if reply is not None:
+            if run_id is not None and reply.run_id != run_id:
+                raise HTTPException(409, "回复已更新，请重新同步")
+            return reply.response(after)
+        return Response(status_code=204)
+
+    @api.post("/api/conversations/{conversation_id}/chat/stop", status_code=204)
+    async def stop_chat(conversation_id: str):
+        await load(conversation_id)
+        if reply := replies.get(conversation_id):
+            reply.cancellation.cancel()
+            await reply.finished.wait()
 
     @api.post("/api/conversations/{conversation_id}/chat")
     async def chat(conversation_id: str, body: SubmitMessage):
         saved = await load(conversation_id)
         if conversation_id in busy:
             raise HTTPException(409, "当前会话正在回复，请稍候")
+        if len(replies) >= settings.max_concurrent_runs:
+            raise HTTPException(429, "同时进行的旅行咨询较多，请稍后再试")
         text = _user_text(body)
         # 只接受本轮用户消息，历史由服务端和官方适配器合并。
         body.messages = body.messages[-1:]
         adapter = VercelAIAdapter(
             agent, body, sdk_version=6, manage_message_history="server"
         )
+        reply = RunningReply(adapter, reply_store)
+        adapter.server_message_id = reply.run_id
         busy.add(conversation_id)
+        replies[conversation_id] = reply
         try:
+            # 取得执行名额后重读，避免等待 SQLite 时上一轮刚好完成而使用旧历史。
+            saved = await load(conversation_id)
             if not saved.messages:
                 await conversations.name(source=saved.summary, title=text[:40])
                 saved = await load(conversation_id)
@@ -251,28 +371,29 @@ def create_app(
                 summary=replace(saved.summary, outcome="running"),
                 messages=messages,
             )
-        except BaseException:
-            busy.discard(conversation_id)
-            raise
-
-        run_id = str(uuid4())
-        hooks = chat_persistence(
-            summary, messages, run_id, text if not saved.messages else None
-        )
-
-        response = adapter.streaming_response(
-            adapter.run_stream(
-                message_history=saved.messages,
-                conversation_id=conversation_id,
-                run_id=run_id,
-                deps=trips,
-                usage_limits=UsageLimits(request_limit=None),
-                capabilities=[hooks, StepPersistence(store=steps)],
+            await reply_store.begin(
+                conversation_id,
+                reply.run_id,
+                [
+                    m.model_dump(mode="json", by_alias=True, exclude_none=True)
+                    for m in VercelAIAdapter.dump_messages(messages, sdk_version=6)
+                ],
             )
+        except BaseException:
+            replies.pop(conversation_id, None)
+            busy.discard(conversation_id)
+            reply.finish()
+            raise
+        reply.ready.set()
+        api.state.tasks.start_soon(
+            produce_reply,
+            reply,
+            summary,
+            messages,
+            saved.messages,
+            text if not saved.messages else None,
         )
-        # 覆盖运行建立前失败的情况；不自行包装或消费事件流。
-        response.background = BackgroundTask(busy.discard, conversation_id)
-        return response
+        return reply.response()
 
     # 开发时 Vite 代理 /api；构建后由同一个 FastAPI 服务托管静态页面。
     dist = ROOT / "frontend" / "dist"

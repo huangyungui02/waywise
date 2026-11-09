@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { Welcome } from "@/components/welcome";
 import { ChatRoute } from "@/components/chat";
-import { api } from "./api";
-import type { Conversation, Detail } from "./api";
+import { listConversations, loadConversation } from "./chat/cache";
 import "./style.css";
 
 function RouteError() {
@@ -36,13 +35,13 @@ const router = createBrowserRouter([
     path: "/",
     element: <Layout />,
     errorElement: <RouteError />,
-    loader: () => api<Conversation[]>("/conversations"),
+    loader: listConversations,
     children: [
       { index: true, element: <Welcome /> },
       {
         path: "chat/:id",
         element: <ChatRoute />,
-        loader: ({ params }) => api<Detail>(`/conversations/${params.id}`),
+        loader: ({ params, request }) => loadConversation(params.id!, request.signal),
       },
     ],
   },

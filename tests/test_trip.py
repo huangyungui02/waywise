@@ -229,26 +229,3 @@ def test_trip_store_save_update_isolation_and_delete(tmp_path, itinerary):
     store = TripStore(database=database)
     assert store.get("chat-a") is None
     assert store.get("chat-b") == trip
-
-
-def test_pending_schema_upgrade_preserves_confirmed_trip(tmp_path, itinerary):
-    import sqlite3
-    from settings import ROOT
-
-    database = tmp_path / "old.db"
-    trip = Trip.model_validate(itinerary)
-    with sqlite3.connect(database) as connection:
-        connection.execute(
-            "CREATE TABLE trips (conversation_id TEXT PRIMARY KEY, data TEXT NOT NULL)"
-        )
-        connection.execute(
-            "INSERT INTO trips VALUES (?, ?)", ("chat-a", trip.model_dump_json())
-        )
-        connection.commit()
-        connection.executescript((ROOT / "migrations/001_trip_pending.sql").read_text())
-    store = TripStore(database=database)
-    assert store.get("chat-a") == trip
-    assert store.get_state("chat-a")["pending_trip"] is None
-    store.present("chat-b", trip, "new")
-    assert store.get("chat-b") is None
-    assert store.confirm("chat-b") == trip

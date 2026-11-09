@@ -21,7 +21,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
-COPY agent.py app.py settings.py trip.py instructions.md ./
+COPY agent.py app.py replies.py settings.py trip.py instructions.md ./
 COPY skills/ ./skills/
 COPY --from=frontend /build/dist ./frontend/dist
 RUN useradd --create-home traveler \

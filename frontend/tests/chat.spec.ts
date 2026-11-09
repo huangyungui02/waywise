@@ -130,6 +130,8 @@ test("新建、发送、工具展示、刷新恢复、切换与删除", async ({
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await page.getByRole("button", { name: "确认删除", exact: true }).click();
   await expect(page).toHaveURL("http://127.0.0.1:5179/");
+  const deletedId = new URL(firstUrl).pathname.split("/").at(-1)!;
+  await expect.poll(() => cachedConversation(page, deletedId)).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
@@ -250,6 +252,7 @@ test("历史方案卡片兼容包装格式的工具参数", async ({ page }) => 
   await page.route("**/api/conversations/*", async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
+    detail.recovery = null;
     for (const message of detail.messages) {
       for (const part of message.parts) {
         if (part.type === "tool-present_trip" || part.toolName === "present_trip") {
@@ -286,6 +289,7 @@ test("连续工具记录自动滚动到底部且不提供结果详情", async ({
   await page.route("**/api/conversations/*", async (route) => {
     const response = await route.fetch();
     const detail = await response.json();
+    detail.recovery = null;
     detail.messages = [{
       id: "tools-scroll",
       role: "assistant",
@@ -322,7 +326,8 @@ for (const mobile of [false, true]) {
     await page.route("**/api/conversations/*", async (route) => {
       const response = await route.fetch();
       const detail = await response.json();
-      detail.messages = [{
+      detail.recovery = null;
+    detail.messages = [{
         id: "long-message",
         role: "assistant",
         parts: [{ type: "text", text: Array.from({ length: 50 }, (_, i) => `行程建议第 ${i + 1} 条。`).join("\n\n") }],
@@ -387,3 +392,315 @@ for (const mobile of [false, true]) {
     }
   });
 }
+
+async function startBackgroundReply(page: Page, withHistory = false) {
+  await page.goto("/");
+  if (withHistory) {
+    await page.getByRole("textbox", { name: "旅行需求" }).fill("开始旅行");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.getByText("收到你的旅行想法：开始旅行。", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  }
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("后台测试");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText("正在后台整理旅行…", { exact: false })).toBeVisible();
+  return page.url();
+}
+
+test("切换会话和刷新会恢复正在执行的回复，输出不重复", async ({ page }) => {
+  const url = await startBackgroundReply(page, true);
+  await page.getByRole("button", { name: "开始一段旅行", exact: true }).click();
+  await expect(page).toHaveURL("http://127.0.0.1:5179/");
+  await page.goto(url);
+  await expect(page.getByText("正在后台整理旅行…", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("后台旅行建议已完成。", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  await expect(page.locator("article")).toHaveCount(4);
+  await expect(page.getByText("核对北京时间", { exact: true })).toHaveCount(1);
+  await expect(page.locator("article").last()).toHaveText("正在后台整理旅行…后台旅行建议已完成。");
+});
+
+test("关闭页面后后台继续执行，新页面能读取最终结果", async ({ page, context }) => {
+  const url = await startBackgroundReply(page);
+  const cid = url.split("/").at(-1);
+  await page.close();
+  const reopened = await context.newPage();
+  await expect.poll(async () => {
+    const response = await reopened.request.get(`/api/conversations/${cid}`);
+    return (await response.json()).summary.outcome;
+  }).toBe("completed");
+  await reopened.goto(url);
+  await expect(reopened.getByText("后台旅行建议已完成。", { exact: false })).toBeVisible();
+  await expect(reopened.locator("article")).toHaveCount(2);
+});
+
+test("详情读取后任务恰好完成，重连仍能加载最终结果", async ({ page }) => {
+  const url = await startBackgroundReply(page);
+  const cid = url.split("/").at(-1);
+  await page.route(`**/api/conversations/${cid}/chat/stream?*`, async (route) => {
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/conversations/${cid}`);
+      return (await response.json()).summary.outcome;
+    }).toBe("completed");
+    await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByText("后台旅行建议已完成。", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+});
+
+for (const stopped of [false, true]) {
+  test(`原生搜索后思考时切换会话和刷新，完整回放并${stopped ? "停止" : "完成"}`, async ({ page }) => {
+    const other = await (await page.request.post("/api/conversations")).json();
+    const otherLoads: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "GET" && new URL(request.url()).pathname === `/api/conversations/${other.id}`)
+        otherLoads.push(request.url());
+    });
+    const prompt = `搜索恢复测试 ${Date.now()}`;
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "旅行需求" }).fill("开始旅行");
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    await expect(page.getByText("收到你的旅行想法：开始旅行。", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+    await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const reply = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+    const search = page.getByText("搜索旅行资讯", { exact: true });
+    const thinking = page.getByRole("status").filter({ hasText: "正在思考…" });
+    await expect(page.getByText(reply, { exact: true })).toBeVisible();
+    await expect(search).toHaveCount(1);
+    await expect(thinking).toBeVisible();
+    const url = page.url();
+    const cid = new URL(page.url()).pathname.split("/").at(-1);
+    const state = await (await page.request.get(`/api/conversations/${cid}`)).json();
+    expect(state.summary.outcome).toBe("running");
+    expect(JSON.stringify(state.messages)).not.toContain(reply);
+
+    // 使用客户端导航，与截图中的 session 切换保持一致。
+    await page.locator(`a[href="/chat/${other.id}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${other.id}$`));
+    await page.locator(`a[href="${new URL(url).pathname}"]`).click();
+    await expect(page).toHaveURL(url);
+    await expect(thinking).toBeVisible();
+    await expect(page.getByText(reply, { exact: true })).toBeVisible();
+    await expect(search).toHaveCount(1);
+    await page.reload();
+    await expect(thinking).toBeVisible();
+    await expect(page.getByText(reply, { exact: true })).toBeVisible();
+    await expect(search).toHaveCount(1);
+    await expect(page.locator("article")).toHaveCount(4);
+    await expect(page.getByText("核对北京时间", { exact: true })).toHaveCount(1);
+
+    if (stopped) {
+      await page.getByRole("button", { name: "停止", exact: true }).click();
+    } else {
+      const finished = await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
+      expect(finished.ok()).toBe(true);
+      await expect(page.getByRole("region", { name: "交通与住宿方案" })).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText(reply, { exact: true })).toBeVisible();
+    await expect(search).toHaveCount(1);
+    expect(otherLoads).toHaveLength(1);
+  });
+}
+
+async function cachedConversation(page: Page, id: string) {
+  return page.evaluate(async (id) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("travel-agent", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<any>((resolve, reject) => {
+        const request = db.transaction("conversations").objectStore("conversations").get(id);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  }, id);
+}
+
+test("IndexedDB 先显示完整预览，慢速同步后接续后台结果", async ({ page }) => {
+  const prompt = `搜索恢复测试 缓存 ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  const url = page.url();
+  const id = new URL(url).pathname.split("/").at(-1)!;
+  await expect.poll(async () => JSON.stringify(await cachedConversation(page, id))).toContain(text);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**/api/conversations/${id}`, async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByText("正在同步最新进度…", { exact: true })).toBeVisible();
+  await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
+  release();
+  await expect(page.getByRole("region", { name: "交通与住宿方案" })).toBeVisible();
+  await expect(page.getByText("正在同步最新进度…", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(text, { exact: true })).toHaveCount(1);
+  await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
+});
+
+for (const mode of ["清空 IndexedDB", "IndexedDB 不可用", "IndexedDB 写入失败"]) {
+  test(`${mode}仍能恢复原生搜索和当前文字`, async ({ page }) => {
+    if (mode === "IndexedDB 不可用") await page.addInitScript(() => {
+      Object.defineProperty(window, "indexedDB", { get() { throw new Error("缓存不可用"); } });
+    });
+    if (mode === "IndexedDB 写入失败") await page.addInitScript(() => {
+      IDBObjectStore.prototype.put = () => { throw new DOMException("缓存空间不足", "QuotaExceededError"); };
+    });
+    const prompt = `搜索恢复测试 无缓存 ${Date.now()}`;
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+    await page.getByRole("button", { name: "发送", exact: true }).click();
+    const text = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    if (mode === "清空 IndexedDB") {
+      // reload 的新文档在路由加载前清空缓存，覆盖无预览的完整服务端恢复路径。
+      await page.addInitScript(() => {
+        const request = indexedDB.open("travel-agent", 1);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction("conversations", "readwrite");
+          transaction.objectStore("conversations").clear();
+          transaction.oncomplete = () => db.close();
+        };
+      });
+    }
+    await page.reload();
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
+    await expect(page.getByRole("status").filter({ hasText: "正在思考…" })).toBeVisible();
+    await page.getByRole("button", { name: "停止", exact: true }).click();
+    await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  });
+}
+
+test("接口离线仍可读取缓存，重新同步后恢复正常", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("离线阅读测试");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "收到你的旅行想法：离线阅读测试。";
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  await expect.poll(async () => JSON.stringify(await cachedConversation(page, id))).toContain(text);
+  await page.route("**/api/**", (route) => route.abort());
+  await page.reload();
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重新同步", exact: true })).toBeVisible();
+  await page.unroute("**/api/**");
+  await page.getByRole("button", { name: "重新同步", exact: true }).click();
+  await expect(page.getByRole("button", { name: "重新同步", exact: true })).toHaveCount(0);
+  await expect(page.getByText(text, { exact: true })).toHaveCount(1);
+});
+
+test("旧运行缓存只作为预览，同步后以新运行完整进度为准且不重跑模型", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("旧运行缓存");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText("收到你的旅行想法：旧运行缓存。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  const url = page.url();
+  const id = new URL(url).pathname.split("/").at(-1)!;
+  await expect.poll(async () => (await cachedConversation(page, id))?.detail.summary.outcome).toBe("completed");
+  const old = await cachedConversation(page, id);
+  const prompt = `搜索恢复测试 新运行 ${Date.now()}`;
+  await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  // 新文档消除上一页面尚未提交的缓存写入，再注入真实的旧运行缓存。
+  await page.goto("/");
+  await page.evaluate(async (old) => {
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const request = indexedDB.open("travel-agent", 1);
+      request.onsuccess = () => resolve(request.result);
+    });
+    await new Promise<void>((resolve) => {
+      const transaction = db.transaction("conversations", "readwrite");
+      transaction.objectStore("conversations").put(old);
+      transaction.oncomplete = () => { db.close(); resolve(); };
+    });
+  }, old);
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith(`/conversations/${id}/chat`)) submissions++;
+  });
+  expect((await cachedConversation(page, id)).runId).toBe(old.runId);
+  await page.goto(url);
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "正在思考…" })).toBeVisible();
+  expect(submissions).toBe(0);
+  await page.getByRole("button", { name: "停止", exact: true }).click();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+});
+
+test("网络恢复后重新订阅后台运行，工具与文字不重复", async ({ page, context }) => {
+  const prompt = `搜索恢复测试 网络 ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  let subscriptions = 0;
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/chat/stream?")) subscriptions++;
+    if (request.method() === "POST" && request.url().endsWith("/chat")) submissions++;
+  });
+  await context.setOffline(true);
+  await context.setOffline(false);
+  await expect.poll(() => subscriptions).toBeGreaterThan(0);
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
+  await expect(page.getByRole("region", { name: "交通与住宿方案" })).toBeVisible();
+  await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
+  await expect(page.getByText(text, { exact: true })).toHaveCount(1);
+  expect(submissions).toBe(0);
+});
+
+test("失败运行刷新后保留已生成内容，恢复不会卡在同步状态", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("失败恢复测试");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("离线模型失败");
+  await expect(page.getByText("失败前已经生成的建议。", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("失败前已经生成的建议。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("离线模型失败");
+  await expect(page.getByText("正在同步最新进度…", { exact: true })).toHaveCount(0);
+});
+
+test("服务端已删除会话返回 404 时清除本地预览和缓存", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill("删除缓存测试");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "收到你的旅行想法：删除缓存测试。";
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  const url = page.url();
+  const id = new URL(url).pathname.split("/").at(-1)!;
+  await expect.poll(async () => (await cachedConversation(page, id))?.detail.summary.outcome).toBe("completed");
+  await page.goto("/");
+  expect((await page.request.delete(`/api/conversations/${id}`)).status()).toBe(204);
+  await page.goto(url);
+  await expect(page.getByRole("alert")).toContainText("会话不存在");
+  await expect(page.getByText(text, { exact: true })).toHaveCount(0);
+  await expect.poll(() => cachedConversation(page, id)).toBeUndefined();
+  await page.reload();
+  await expect(page.getByText("暂时无法打开", { exact: true })).toBeVisible();
+});
