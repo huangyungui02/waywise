@@ -24,7 +24,7 @@
 	aria-label="行程查询记录"
 	class={[
 		'my-1.5 flex flex-col gap-1 rounded-xl',
-		count > 1 && 'max-h-36 overflow-y-auto overscroll-contain bg-muted/20 p-2.5'
+		count > 1 && 'max-h-36 overflow-y-auto bg-muted/20 p-2.5'
 	]}
 >
 	{#each tools as part (part.toolCallId)}

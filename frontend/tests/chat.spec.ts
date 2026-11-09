@@ -330,13 +330,16 @@ test('连续工具记录自动滚动到底部且不提供结果详情', async ({
 			{
 				id: 'tools-scroll',
 				role: 'assistant',
-				parts: Array.from({ length: 20 }, (_, index) => ({
-					type: 'tool-current_time',
-					toolCallId: `clock-${index}`,
-					state: 'output-available',
-					input: {},
-					output: '不应显示的工具原始结果'
-				}))
+				parts: [
+					...Array.from({ length: 20 }, (_, index) => ({
+						type: 'tool-current_time',
+						toolCallId: `clock-${index}`,
+						state: 'output-available',
+						input: {},
+						output: '不应显示的工具原始结果'
+					})),
+					{ type: 'text', text: '后续行程说明\n\n'.repeat(100) }
+				]
 			}
 		];
 		await route.fulfill({ response, json: detail });
@@ -355,6 +358,13 @@ test('连续工具记录自动滚动到底部且不提供结果详情', async ({
 			)
 		)
 		.toBe(true);
+	const history = page.getByRole('region', { name: '聊天记录', exact: true });
+	await history.evaluate((element) => {
+		element.scrollTop = 0;
+	});
+	await records.hover();
+	await page.mouse.wheel(0, 400);
+	await expect.poll(() => history.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 	await expect(records.getByRole('button')).toHaveCount(0);
 	await expect(page.getByText('不应显示的工具原始结果')).toHaveCount(0);
 });
