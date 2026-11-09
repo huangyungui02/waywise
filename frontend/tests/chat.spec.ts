@@ -449,6 +449,7 @@ for (const mobile of [false, true]) {
 			if (newConversation) {
 				if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 				await page.getByRole('button', { name: '开始一段旅行', exact: true }).click();
+				if (mobile) await expect(page.getByRole('dialog', { name: '我的旅行' })).toBeHidden();
 			}
 			const card = page.getByRole('region', { name: '旅行基本信息' });
 			await expect(card.getByRole('textbox')).toHaveCount(2);
