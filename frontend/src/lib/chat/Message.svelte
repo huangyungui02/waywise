@@ -4,7 +4,6 @@
 	import ToolActivity from './ToolActivity.svelte';
 	import Markdown from './Markdown.svelte';
 	import TripCard from './TripCard.svelte';
-	import { readBrief } from './travel-brief';
 	let {
 		message,
 		detail,
@@ -47,32 +46,11 @@
 		<div class="max-w-[92%] sm:max-w-[78%]">
 			{#each message.parts as part, i (`${message.id}-${i}`)}
 				{#if part.type === 'text'}
-					{@const brief = readBrief(part.text)}
-					{#if brief}
-						<div class="pure-capsule flex flex-col gap-2 p-5">
-							<p class="font-serif text-xl">
-								<span>{brief['出发城市']}</span> → <span>{brief['目的城市']}</span>
-							</p>
-							<p class="text-xs text-muted-foreground">
-								{[brief['出发日期'], brief['返回日期']].filter(Boolean).join(' 至 ')}
-							</p>
-							<div class="flex flex-wrap gap-2">
-								{#each Object.entries(brief).filter(([key]) => !['出发城市', '目的城市', '出发日期', '返回日期'].includes(key)) as [key, value] (key)}<span
-										class="text-xs"
-										>{key === '预算金额'
-											? `¥${value} (${brief['预算口径'] || '总共'})`
-											: key.endsWith('同行') && value === '有'
-												? `有${key}`
-												: `${key}：${value}`}</span
-									>{/each}
-							</div>
-							<span class="sr-only">{part.text}</span>
-						</div>
-					{:else}<p
-							class="rounded-xl bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-primary-foreground selection:bg-[#d9eee3] selection:text-[#19382e]"
-						>
-							{part.text}
-						</p>{/if}
+					<p
+						class="rounded-xl bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-primary-foreground selection:bg-[#d9eee3] selection:text-[#19382e]"
+					>
+						{part.text}
+					</p>
 				{/if}
 			{/each}
 		</div>

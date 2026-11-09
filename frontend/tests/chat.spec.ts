@@ -209,7 +209,7 @@ test('停止生成后仍能读取已保存记录并继续聊天', async ({ page 
 	await expect(page.getByText('收到你的旅行想法：继续聊杭州。')).toBeVisible();
 });
 
-test('表单合并发送，刷新恢复摘要，聊天调整需求和手机布局', async ({ page }) => {
+test('表单合并发送后显示原文，刷新恢复文字，聊天调整需求和手机布局', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/');
 	await page.getByLabel('出发地', { exact: true }).fill('上海');
@@ -224,16 +224,18 @@ test('表单合并发送，刷新恢复摘要，聊天调整需求和手机布�
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('想住湖边');
 	await page.getByRole('button', { name: '发送', exact: true }).click();
 	await expect(page.getByText(/收到你的旅行想法/)).toBeVisible();
-	await expect(page.locator('article').first().getByText('上海', { exact: true })).toBeVisible();
-	await expect(page.locator('article').first().getByText('杭州', { exact: true })).toBeVisible();
-	await expect(page.locator('article').first()).toContainText('2026-12-01 至 2026-12-03');
-	await expect(page.locator('article').first()).toContainText('¥2000 (人均)');
-	await expect(page.locator('article').first()).toContainText('有老人同行');
-	await expect(page.locator('article').first()).toContainText('有小孩同行');
+	const id = page.url().split('/').at(-1);
+	const detail = await (await page.request.get(`/api/conversations/${id}`)).json();
+	const sentText = detail.messages[0].parts.find(
+		(part: { type: string }) => part.type === 'text'
+	).text;
+	const userMessage = page.locator('article').first();
+	await expect(userMessage.locator('p')).toHaveText(sentText);
+	await expect(userMessage.locator('.pure-capsule, .sr-only')).toHaveCount(0);
 	await expect(page.getByLabel('出发地', { exact: true })).toHaveCount(0);
 	await page.reload();
 	await expect(page.getByRole('button', { name: '修改需求' })).toHaveCount(0);
-	await expect(page.locator('article').first().getByText('杭州', { exact: true })).toBeVisible();
+	await expect(userMessage.locator('p')).toHaveText(sentText);
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('目的地改成苏州');
 	await page.getByRole('button', { name: '发送', exact: true }).click();
 	await expect(page.getByText('收到你的旅行想法：目的地改成苏州。')).toBeVisible();
