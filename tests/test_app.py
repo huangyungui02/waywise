@@ -24,7 +24,7 @@ from settings import Settings
 
 @pytest.fixture
 def configured(monkeypatch):
-    import app
+    import replies
     from pydantic_ai.direct import model_request
 
     async def local_title_request(model, messages, **kwargs):
@@ -49,7 +49,7 @@ def configured(monkeypatch):
             **kwargs,
         )
 
-    monkeypatch.setattr(app, "model_request", local_title_request)
+    monkeypatch.setattr(replies, "model_request", local_title_request)
     monkeypatch.setenv("AMAP_MAPS_API_KEY", "test-key")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
     monkeypatch.setenv("TRAVEL_MODEL", "qwen3.8-flash")
@@ -200,18 +200,17 @@ def test_flyai_execution_errors(configured, monkeypatch, outcome):
         assert agent.run_sync("查询酒店").output == "已说明查询失败"
 
 
-def test_web_endpoints(configured, tmp_path):
-    from app import create_app
+def test_web_endpoints(app_factory, configured, tmp_path):
 
     settings = Settings(database_path=tmp_path / "test.db")
-    with TestClient(create_app(settings), base_url="http://127.0.0.1") as client:
+    with TestClient(app_factory(settings), base_url="http://127.0.0.1") as client:
         assert client.get("/api/health").status_code == 200
         response = client.get("/api/conversations")
         assert response.status_code == 200
         assert response.json() == []
 
 
-def test_web_allows_more_than_50_model_requests(configured, tmp_path):
+def test_web_allows_more_than_50_model_requests(app_factory, configured, tmp_path):
     requests = 0
 
     async def stream_model(messages, info):
@@ -227,11 +226,10 @@ def test_web_allows_more_than_50_model_requests(configured, tmp_path):
             yield "超过50次请求后正常完成"
 
     agent = agent_module.create_agent()
-    from app import create_app
 
     with agent.override(model=FunctionModel(stream_function=stream_model)):
         with TestClient(
-            create_app(Settings(database_path=tmp_path / "test.db"), agent),
+            app_factory(Settings(database_path=tmp_path / "test.db"), agent),
             base_url="http://127.0.0.1",
         ) as client:
             conversation_id = client.post("/api/conversations").json()["id"]

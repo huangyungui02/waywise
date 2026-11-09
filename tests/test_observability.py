@@ -17,7 +17,9 @@ from trip import TripStore
 
 
 @pytest.mark.parametrize("include_content", [False, True])
-def test_request_agent_tool_trace_and_content(monkeypatch, tmp_path, include_content):
+def test_request_agent_tool_trace_and_content(
+    app_factory, monkeypatch, tmp_path, include_content
+):
     exporter = InMemorySpanExporter()
     configure = logfire.configure
 
@@ -45,7 +47,13 @@ def test_request_agent_tool_trace_and_content(monkeypatch, tmp_path, include_con
         else:
             yield "private-model-response"
 
-    agent = Agent(FunctionModel(stream_function=stream), deps_type=TripStore)
+    agent = Agent(
+        FunctionModel(
+            lambda messages, info: ModelResponse(parts=[TextPart("测试旅行")]),
+            stream_function=stream,
+        ),
+        deps_type=TripStore,
+    )
 
     @agent.tool_plain
     def call_flyai(query: str) -> str:
@@ -62,12 +70,9 @@ def test_request_agent_tool_trace_and_content(monkeypatch, tmp_path, include_con
     )
     assert "test-write-token" not in repr(settings)
     with TestClient(
-        app.create_app(
+        app_factory(
             settings,
             agent,
-            title_model=FunctionModel(
-                lambda messages, info: ModelResponse(parts=[TextPart("测试旅行")])
-            ),
         )
     ) as client:
         conversation_id = client.post("/api/conversations").json()["id"]
@@ -120,7 +125,7 @@ def test_request_agent_tool_trace_and_content(monkeypatch, tmp_path, include_con
     assert "private-invalid-body" not in telemetry
 
 
-def test_no_token_does_not_configure_logfire(monkeypatch, tmp_path):
+def test_no_token_does_not_configure_logfire(app_factory, monkeypatch, tmp_path):
     def unexpected(**kwargs):
         pytest.fail("未配置 Token 时不应初始化 Logfire")
 
@@ -133,7 +138,7 @@ def test_no_token_does_not_configure_logfire(monkeypatch, tmp_path):
         database_path=tmp_path / "travel.db",
     )
     with TestClient(
-        app.create_app(settings, Agent("test", deps_type=TripStore))
+        app_factory(settings, Agent("test", deps_type=TripStore))
     ) as client:
         assert client.get("/api/health").status_code == 200
 

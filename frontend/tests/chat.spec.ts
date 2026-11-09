@@ -639,7 +639,7 @@ test("旧运行缓存只作为预览，同步后以新运行完整进度为准�
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().endsWith(`/conversations/${id}/chat`)) submissions++;
   });
-  expect((await cachedConversation(page, id)).runId).toBe(old.runId);
+  expect((await cachedConversation(page, id)).detail.messages).toEqual(old.detail.messages);
   await page.goto(url);
   await expect(page.getByText(text, { exact: true })).toBeVisible();
   await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
@@ -703,4 +703,84 @@ test("服务端已删除会话返回 404 时清除本地预览和缓存", async 
   await expect.poll(() => cachedConversation(page, id)).toBeUndefined();
   await page.reload();
   await expect(page.getByText("暂时无法打开", { exact: true })).toBeVisible();
+});
+
+test("健康连接重新可见时不重连，回复完成后只读取一次详情", async ({ page }) => {
+  // 禁用缓存，避免缓存命中掩盖路由重验证产生的重复详情请求。
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "indexedDB", { get() { throw new Error("缓存不可用"); } });
+  });
+  const prompt = `搜索恢复测试 可见 ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "正在思考…" })).toBeVisible();
+  const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  let subscriptions = 0;
+  let details = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/chat/stream?")) subscriptions++;
+    if (new URL(request.url()).pathname === `/api/conversations/${id}`) details++;
+  });
+  await page.evaluate(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(subscriptions).toBe(0);
+  expect(details).toBe(0);
+
+  const list = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/conversations");
+  const detail = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/conversations/${id}`);
+  await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
+  await Promise.all([list, detail]);
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "交通与住宿方案" })).toBeVisible();
+  expect(details).toBe(1);
+  expect(subscriptions).toBe(0);
+});
+
+test("新会话在后台断流后由 SDK 在重新可见时自动恢复", async ({ page }) => {
+  // 仅在测试侧中断响应体，确定性覆盖浏览器后台丢失流连接的场景。
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      if (init?.method !== "POST" || !String(input).endsWith("/chat")) return response;
+      const disconnected = new TransformStream({
+        start(controller) {
+          window.addEventListener("test:disconnect-chat", () => {
+            controller.error(new TypeError("network disconnected"));
+          }, { once: true });
+        },
+      });
+      return new Response(response.body!.pipeThrough(disconnected), response);
+    };
+  });
+  const prompt = `搜索恢复测试 后台 ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "旅行需求" }).fill(prompt);
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const text = "好的，继续。最后核实回程班车的班次，确认后即可锁定方案。";
+  await expect(page.getByRole("status").filter({ hasText: "正在思考…" })).toBeVisible();
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/chat")) submissions++;
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    window.dispatchEvent(new Event("test:disconnect-chat"));
+  });
+  await expect(page.getByRole("alert")).toContainText("network disconnected");
+  const resumed = page.waitForRequest((request) => request.url().includes("/chat/stream?"));
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await resumed;
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText(text, { exact: true })).toHaveCount(1);
+  await expect(page.getByText("搜索旅行资讯", { exact: true })).toHaveCount(1);
+  await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
+  await expect(page.getByRole("region", { name: "交通与住宿方案" })).toBeVisible();
+  expect(submissions).toBe(0);
 });

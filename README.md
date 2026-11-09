@@ -31,7 +31,8 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 | `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
 | `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`），需支持 Responses 接口、内置搜索和工具调用 |
 | `REDIS_URL` | 否 | 本地默认 `redis://localhost:6372/0`；Compose 自动使用内网 Redis |
-| `REPLY_RETENTION_SECONDS` | 否 | 回复结束后事件保留秒数，默认 `86400`（24 小时） |
+| `REDIS_STREAM_MAX_RUN` | 否 | SDK 运行最长时间，默认 `3600` 秒，最多 `86400` 秒 |
+| `REDIS_STREAM_DONE_TTL` | 否 | SDK 已结束流的保留时间，默认 `120` 秒，且不超过运行剩余寿命 |
 | `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
 
 Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
@@ -62,7 +63,9 @@ Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发
 
 Compose 同时启动 Redis，应用等待其健康检查通过后启动。Redis 使用 `redis-data` 卷和 AOF，
 容器间通过 `redis:6379` 连接；宿主机仅在 `127.0.0.1:6372` 提供访问。
-Redis 保存临时回复事件，结束后默认保留 24 小时；长期历史和行程仍在 SQLite 中。
+Redis 保存临时回复事件；长期历史和行程仍在 SQLite 中。流的寿命由 SDK 原生配置控制，到期后读取 SQLite 历史。
+当前使用 `fastapi-redis-sdk` 的 `feature/resumable-streams` 分支，固定 commit 为 `fd7f483022c9b97ae437e972e2b84ea54b3034e6`。
+该功能要求 Redis ≥ 8.6.2，推荐 ≥ 8.6.6；Compose 固定使用 Redis 8.8.0。
 
 备份时先停止服务，再复制整个数据目录：
 
@@ -149,7 +152,7 @@ npm --prefix frontend ci
 ```
 
 后端模块保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
-`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Tailwind CSS 和 shadcn/ui。页面组件在 `src/components/`，
+`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Tailwind CSS 和 shadcn/ui。页面组件在 `src/components/`，
 官方 UI 组件在 `src/components/ui/`；`src/style.css` 只保留样式导入和主题配置。
 
 先确保本地 Redis 在 `localhost:6372` 运行；也可以只启动 Compose 中的 Redis：
@@ -183,7 +186,9 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-Python 与浏览器测试默认使用 FakeRedis，不依赖本地 Redis，也不调用真实模型或旅游服务。
+Python 默认使用 SDK 边界的本地替身和 FakeRedis，不依赖本地 Redis。
+浏览器测试使用真实 SDK 和本地 `localhost:6372` Redis，运行前执行 `docker compose up -d redis`。
+两者都不调用真实模型或旅游服务。
 需要验证真实 Redis Streams 时，可显式运行隔离键测试（不会清空 Redis）：
 
 ```bash

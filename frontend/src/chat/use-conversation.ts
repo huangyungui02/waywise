@@ -6,124 +6,119 @@ import { cacheConversation, forgetConversation, type LoadedConversation } from "
 import { ConversationTransport } from "./transport";
 
 export function useConversation(loaded: LoadedConversation) {
-  const initialDetail = loaded.detail;
-  const [boot] = useState(loaded);
-  const [detail, setDetail] = useState(initialDetail);
-  const [recovering, setRecovering] = useState(loaded.cached || Boolean(initialDetail.recovery));
-  const preview = useRef(initialDetail.messages);
-  const firstSnapshot = useRef<Detail | null>(loaded.cached ? null : initialDetail);
+  const [detail, setDetail] = useState(loaded.detail);
+  const [recovering, setRecovering] = useState(loaded.cached || Boolean(loaded.detail.recovery));
+  const preview = useRef(loaded.detail.messages);
+  const replayTarget = useRef<Detail["recovery"]>(null);
   const detailRef = useRef(detail);
-  detailRef.current = detail;
-  const checkpoint = useRef<{ runId: string; cursor: string; messages: Detail["messages"] } | null>(null);
+  const pendingMessages = useRef<Detail["messages"] | null>(null);
   const cacheTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revalidator = useRevalidator();
   const [chat] = useState(
-    () =>
-      new SDKChat({
-        id: detail.summary.id,
-        messages: detail.messages,
-        transport: new ConversationTransport(
-          detail.summary.id,
-          async (signal) => {
-            try {
-              const saved = firstSnapshot.current ?? await api<Detail>(`/conversations/${detail.summary.id}`, { signal });
-              firstSnapshot.current = null;
-              return saved;
-            } catch (error) {
-              if (error instanceof ApiError && error.status === 404) {
-                preview.current = [];
-                checkpoint.current = null;
-                await forgetConversation(detail.summary.id);
-                chat.messages = [];
-                setRecovering(false);
-              }
-              throw error;
-            }
-          },
-          (saved) => {
-            setDetail(saved);
-            chat.messages = saved.recovery?.messages ?? saved.messages;
-            if (!saved.recovery) {
-              setRecovering(false);
-              checkpoint.current = { runId: "", cursor: "0-0", messages: structuredClone(saved.messages) };
-              detailRef.current = saved;
-              flushCache();
-            }
-          },
-        ),
-        onError: () => setRecovering(false),
-        onData: (part) => {
-          if (part.type === "data-progress") {
-            const progress = part.data as { runId: string; cursor: string; restored?: boolean };
-            if (progress.restored) setRecovering(false);
-            checkpoint.current = { ...progress, messages: structuredClone(chat.messages) };
-            if (cacheTimer.current === null)
-              cacheTimer.current = setTimeout(flushCache, 250);
+    () => new SDKChat({
+      id: detail.summary.id,
+      messages: detail.messages,
+      transport: new ConversationTransport(
+        detail.summary.id,
+        (signal) => {
+          if (!replayTarget.current) preview.current = chat.messages;
+          setRecovering(true);
+          return refreshDetail(signal);
+        },
+        (saved) => {
+          replayTarget.current = saved.recovery;
+          chat.messages = saved.recovery?.messages ?? saved.messages;
+          if (!saved.recovery) {
+            setRecovering(false);
+            pendingMessages.current = chat.messages;
+            flushCache();
           }
         },
-        onFinish: ({ isAbort, isDisconnect }) => {
-          if (!isAbort && !isDisconnect) {
-            void api<Detail>(`/conversations/${detail.summary.id}`).then((saved) => {
-              detailRef.current = saved;
-              setDetail(saved);
-              flushCache();
-            }).catch(() => {});
-            revalidator.revalidate();
+      ),
+      onData: (part) => {
+        if (part.type === "data-progress") {
+          const target = replayTarget.current;
+          if (target) {
+            const { runId, cursor } = part.data as { runId: string; cursor: string };
+            if (runId !== target.run_id || target.cursor === null) return;
+            const [time, sequence] = cursor.split("-").map(BigInt);
+            const [targetTime, targetSequence] = target.cursor.split("-").map(BigInt);
+            if (time < targetTime || (time === targetTime && sequence < targetSequence)) return;
+            replayTarget.current = null;
           }
-        },
-      }),
+          setRecovering(false);
+          pendingMessages.current = chat.messages;
+          if (cacheTimer.current === null)
+            cacheTimer.current = setTimeout(flushCache, 250);
+        }
+      },
+      onFinish: ({ isAbort, isDisconnect }) => {
+        if (!isAbort && !isDisconnect) {
+          replayTarget.current = null;
+          setRecovering(false);
+          pendingMessages.current = chat.messages;
+          void refreshDetail().then(flushCache).catch(() => {});
+          revalidator.revalidate();
+        }
+      },
+    }),
   );
-  const { messages: liveMessages, sendMessage, stop, resumeStream, status, error } = useChat({
+  const { sendMessage, stop, resumeStream, status, error } = useChat({
     chat,
-    resume: boot.cached || Boolean(boot.detail.recovery),
+    experimental_throttle: 100,
+    // 空白会话不重连；首条消息发出后也启用 SDK 的可见性恢复。
+    resume: loaded.cached || Boolean(loaded.detail.recovery) || chat.messages.length > 0,
   });
+
+  async function refreshDetail(signal?: AbortSignal) {
+    try {
+      const saved = await api<Detail>(`/conversations/${detailRef.current.summary.id}`, { signal });
+      detailRef.current = saved;
+      setDetail(saved);
+      return saved;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        preview.current = [];
+        replayTarget.current = null;
+        pendingMessages.current = null;
+        await forgetConversation(detailRef.current.summary.id);
+        chat.messages = [];
+        setRecovering(false);
+      }
+      throw error;
+    }
+  }
 
   function flushCache() {
     if (cacheTimer.current !== null) clearTimeout(cacheTimer.current);
     cacheTimer.current = null;
-    const saved = checkpoint.current;
-    if (saved) void cacheConversation(detailRef.current, saved.runId, saved.cursor, saved.messages);
+    const messages = pendingMessages.current;
+    if (messages) void cacheConversation(detailRef.current, structuredClone(messages));
   }
 
-  useEffect(() => { if (!loaded.cached) setDetail(initialDetail); }, [initialDetail, loaded.cached]);
-  useEffect(() => {
-    if (!boot.cached && !boot.detail.recovery && boot.detail.messages.length) {
-      checkpoint.current = { runId: "", cursor: "0-0", messages: structuredClone(boot.detail.messages) };
-      flushCache();
-    }
-  }, [boot]);
-
-  const messages = recovering ? preview.current : liveMessages;
-
   async function synchronize() {
-    preview.current = chat.messages;
-    setRecovering(true);
-    firstSnapshot.current = null;
     await stop();
     await resumeStream();
   }
 
   useEffect(() => {
-    const resume = () => {
+    if (!loaded.cached && !loaded.detail.recovery && loaded.detail.messages.length) {
+      pendingMessages.current = chat.messages;
+      flushCache();
+    }
+    const online = () => {
       if (document.visibilityState === "visible") void synchronize();
     };
     const save = () => flushCache();
     window.addEventListener("pagehide", save);
-    window.addEventListener("online", resume);
-    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("online", online);
     return () => {
       window.removeEventListener("pagehide", save);
-      window.removeEventListener("online", resume);
-      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", online);
+      flushCache();
+      void stop();
     };
   }, [chat, stop, resumeStream]);
 
-  useEffect(
-    () => () => {
-      flushCache();
-      void stop();
-    },
-    [stop],
-  );
-  return { detail, messages, sendMessage, status, error, recovering, synchronize };
+  return { detail, messages: recovering ? preview.current : chat.messages, sendMessage, status, error, recovering, synchronize };
 }

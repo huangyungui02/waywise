@@ -15,6 +15,9 @@ def offline_redis(monkeypatch):
     from fakeredis import FakeServer
     from fakeredis.aioredis import FakeRedis
 
+    from stream_backend import LocalStreams
+
+    monkeypatch.setattr("app.StreamBackend", LocalStreams)
     server = FakeServer()
     monkeypatch.setattr(
         "app.Redis.from_url",
@@ -27,3 +30,18 @@ def pytest_addoption(parser):
     parser.addoption(
         "--redis-url", default=None, help="显式启用真实 Redis Streams 联调"
     )
+
+
+@pytest.fixture
+def app_factory(monkeypatch):
+    import app
+
+    def create(settings=None, agent=None):
+        with monkeypatch.context() as patch:
+            if settings is not None:
+                patch.setattr(app, "Settings", lambda: settings)
+            if agent is not None:
+                patch.setattr(app, "create_agent", lambda settings: agent)
+            return app.create_app()
+
+    return create

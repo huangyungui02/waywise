@@ -1,4 +1,4 @@
-import type { UIMessage, UIMessageChunk } from 'ai';
+import type { UIMessage } from 'ai';
 
 export interface Conversation { id: string; title: string; outcome: string; updated_at: string }
 interface Transport {
@@ -7,7 +7,7 @@ interface Transport {
 }
 interface Stay { hotel: string; address: string; check_in: string; check_out: string; purchase_url: string | null; booked: boolean }
 export interface Trip { origin: string; destination: string; outbound: Transport; inbound: Transport; stays: Stay[] }
-export interface Recovery { run_id: string; messages: UIMessage[]; outcome: string; cursor: string; events: UIMessageChunk[] }
+export interface Recovery { run_id: string; cursor: string | null; messages: UIMessage[] }
 export interface Detail { recovery: Recovery | null; summary: Conversation; messages: UIMessage[]; trip: Trip | null; pending_trip: Trip | null; pending_id: string | null; confirmed_id: string | null }
 
 export class ApiError extends Error {

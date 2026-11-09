@@ -519,6 +519,18 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi-redis-sdk"
+version = "0.10.0"
+source = { git = "https://github.com/redis/fastapi-redis-sdk.git?rev=fd7f483022c9b97ae437e972e2b84ea54b3034e6#fd7f483022c9b97ae437e972e2b84ea54b3034e6" }
+dependencies = [
+    { name = "anyio" },
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+]
+
+[[package]]
 name = "fastmcp-slim"
 version = "4.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1972,6 +1984,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "fastapi-redis-sdk" },
     { name = "logfire", extra = ["fastapi"] },
     { name = "pydantic-ai-harness", extra = ["skills"] },
     { name = "pydantic-ai-slim", extra = ["mcp", "openai", "web"] },
@@ -1989,6 +2002,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.162.0" },
+    { name = "fastapi-redis-sdk", git = "https://github.com/redis/fastapi-redis-sdk.git?rev=fd7f483022c9b97ae437e972e2b84ea54b3034e6" },
     { name = "logfire", extras = ["fastapi"], specifier = ">=5.4,<6" },
     { name = "pydantic-ai-harness", extras = ["skills"], specifier = "==0.63.0" },
     { name = "pydantic-ai-slim", extras = ["mcp", "openai", "web"], specifier = "==2.63.0" },

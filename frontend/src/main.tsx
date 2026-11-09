@@ -42,6 +42,8 @@ const router = createBrowserRouter([
         path: "chat/:id",
         element: <ChatRoute />,
         loader: ({ params, request }) => loadConversation(params.id!, request.signal),
+        // 同一会话的详情由聊天 hook 刷新；列表重验证不重新装载缓存预览。
+        shouldRevalidate: ({ currentParams, nextParams }) => currentParams.id !== nextParams.id,
       },
     ],
   },

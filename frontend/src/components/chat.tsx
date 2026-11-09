@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useLocation, useRevalidator } from "react-router";
 import type { LoadedConversation } from "@/chat/cache";
 import { useConversation } from "@/chat/use-conversation";
@@ -30,6 +30,8 @@ function Chat({ loaded }: { loaded: LoadedConversation }) {
   const initialSent = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const following = useRef(true);
+  const lastScrollTop = useRef(0);
   // 聚合连续的助手消息，确保刷新后工具调用记录依然整齐聚合在一个滚动容器内
   const displayMessages = useMemo(() => {
     const result: typeof messages = [];
@@ -61,20 +63,49 @@ function Chat({ loaded }: { loaded: LoadedConversation }) {
     latestMessage.parts.some((part) => part.type === "reasoning" && part.state === "streaming");
 
 
-  useEffect(() => {
-    if (atBottom && scroller.current)
-      scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [displayMessages, atBottom, thinking]);
+  const scrollToLatest = useCallback(() => {
+    following.current = true;
+    setAtBottom(true);
+    const element = scroller.current;
+    if (element) {
+      element.scrollTop = element.scrollHeight;
+      lastScrollTop.current = element.scrollTop;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (following.current) scrollToLatest();
+  }, [displayMessages, thinking, scrollToLatest]);
+
+  const confirm = useCallback(async (id: string) => {
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      await api(`/conversations/${detail.summary.id}/proposals/${encodeURIComponent(id)}/confirm`, { method: "POST" });
+      revalidator.revalidate();
+      scrollToLatest();
+      await sendMessage({ text: "已确认卡片中的交通和住宿方案，请继续规划每日行程。" });
+    } catch (error) {
+      setConfirmError(error instanceof Error ? error.message : "确认失败，请重试");
+      revalidator.revalidate();
+    } finally {
+      setConfirming(false);
+    }
+  }, [detail.summary.id, revalidator.revalidate, scrollToLatest, sendMessage]);
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={scroller}
+        onWheel={(event) => { if (event.deltaY < 0) following.current = false; }}
+        onTouchMove={() => { following.current = false; }}
         onScroll={(event) => {
-          const el = event.currentTarget;
-          setAtBottom(
-            el.scrollHeight - el.scrollTop - el.clientHeight < 80,
-          );
+          const element = event.currentTarget;
+          const bottom = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+          if (element.scrollTop < lastScrollTop.current) following.current = false;
+          else if (element.scrollTop > lastScrollTop.current && bottom) following.current = true;
+          lastScrollTop.current = element.scrollTop;
+          setAtBottom(bottom);
         }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8"
       >
@@ -87,21 +118,7 @@ function Chat({ loaded }: { loaded: LoadedConversation }) {
           )}
 
           {displayMessages.map((message) => (
-            <Message message={message} key={message.id} detail={detail} busy={running || confirming} onConfirm={async (id) => {
-              setConfirming(true);
-              setConfirmError(null);
-              try {
-                await api(`/conversations/${detail.summary.id}/proposals/${encodeURIComponent(id)}/confirm`, { method: "POST" });
-                revalidator.revalidate();
-                setAtBottom(true);
-                await sendMessage({ text: "已确认卡片中的交通和住宿方案，请继续规划每日行程。" });
-              } catch (error) {
-                setConfirmError(error instanceof Error ? error.message : "确认失败，请重试");
-                revalidator.revalidate();
-              } finally {
-                setConfirming(false);
-              }
-            }} />
+            <Message message={message} key={message.id} detail={detail} busy={running || confirming} onConfirm={confirm} />
           ))}
 
           {detail.trip && !detail.confirmed_id && (
@@ -151,12 +168,7 @@ function Chat({ loaded }: { loaded: LoadedConversation }) {
           size="icon"
           aria-label="回到最新消息"
           className="absolute bottom-24 left-1/2 -translate-x-1/2 size-8 rounded-full bg-white/90 shadow-md backdrop-blur-md hover:bg-white"
-          onClick={() => {
-            setAtBottom(true);
-            if (scroller.current) {
-              scroller.current.scrollTop = scroller.current.scrollHeight;
-            }
-          }}
+          onClick={scrollToLatest}
         >
           <ArrowDown className="size-4" />
         </Button>
@@ -177,7 +189,7 @@ function Chat({ loaded }: { loaded: LoadedConversation }) {
         }}
         onSend={async (text) => {
           const input = displayMessages.length ? text : travelPrompt(values, text);
-          setAtBottom(true);
+          scrollToLatest();
           await sendMessage({ text: input });
         }}
       />

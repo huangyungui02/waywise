@@ -1,7 +1,7 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { memo, useLayoutEffect, useRef, type ReactNode } from "react";
 import { isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowRight,
@@ -26,17 +26,10 @@ const toolNames: Record<string, string> = {
 
 function ToolActivityGroup({ children, count }: { children: ReactNode; count: number }) {
   const scroller = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-
   useLayoutEffect(() => {
     const element = scroller.current;
-    if (!element || !content.current) return;
-    const scrollToBottom = () => { element.scrollTop = element.scrollHeight; };
-    scrollToBottom();
-    const observer = new ResizeObserver(scrollToBottom);
-    observer.observe(content.current);
-    return () => observer.disconnect();
-  });
+    if (count > 1 && element) element.scrollTop = element.scrollHeight;
+  }, [count]);
 
   return (
     <div
@@ -50,14 +43,14 @@ function ToolActivityGroup({ children, count }: { children: ReactNode; count: nu
           : "space-y-1",
       )}
     >
-      <div ref={content} className="space-y-1">
+      <div className="space-y-1">
         {children}
       </div>
     </div>
   );
 }
 
-export function Message({ message, detail, busy, onConfirm }: { message: UIMessage; detail: Detail; busy: boolean; onConfirm: (id: string) => void }) {
+export const Message = memo(function Message({ message, detail, busy, onConfirm }: { message: UIMessage; detail: Detail; busy: boolean; onConfirm: (id: string) => void }) {
   const user = message.role === "user";
 
   if (user) {
@@ -141,7 +134,7 @@ export function Message({ message, detail, busy, onConfirm }: { message: UIMessa
             return (
               <div
                 key={i}
-                className="rounded-xl rounded-tr-xs bg-[#19382e]/90 text-white selection:bg-[#d9eee3] selection:text-[#19382e] backdrop-blur-md px-4 py-2.5 text-sm leading-relaxed shadow-2xs break-words"
+                className="rounded-xl rounded-tr-xs bg-[#19382e]/90 text-white selection:bg-[#d9eee3] selection:text-[#19382e] px-4 py-2.5 text-sm leading-relaxed shadow-2xs break-words"
               >
                 {part.text}
               </div>
@@ -191,38 +184,7 @@ export function Message({ message, detail, busy, onConfirm }: { message: UIMessa
           }
           if (group.type === "text") {
             return (
-              <div
-                key={groupIdx}
-                className={cn(
-                  "prose prose-sm prose-stone max-w-none break-words text-sm leading-7 text-foreground",
-                  "prose-headings:font-serif prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-foreground",
-                  "prose-h2:text-lg prose-h2:mt-4 prose-h2:mb-1.5",
-                  "prose-h3:text-sm prose-h3:mt-3 prose-h3:mb-1",
-                  "prose-p:my-2 first:prose-p:mt-0 last:prose-p:mb-0",
-                  "prose-a:font-medium prose-a:text-primary prose-a:underline-offset-4 hover:prose-a:underline",
-                  "prose-blockquote:border-l-primary/40 prose-blockquote:py-1 prose-blockquote:px-3.5 prose-blockquote:font-serif prose-blockquote:italic",
-                  "prose-li:my-0.5",
-                  "prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:rounded-xl prose-pre:bg-white/80",
-                  "prose-img:max-h-80 prose-img:rounded-xl prose-img:object-cover",
-                  "prose-table:text-xs",
-                )}
-              >
-                <Markdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: (props) => (
-                      <a {...props} target="_blank" rel="noreferrer" />
-                    ),
-                    table: (props) => (
-                      <div className="my-3 max-w-full overflow-x-auto rounded-xl bg-white/70 px-3 py-1 shadow-2xs backdrop-blur-md">
-                        <table {...props} />
-                      </div>
-                    ),
-                  }}
-                >
-                  {group.text}
-                </Markdown>
-              </div>
+              <MessageMarkdown key={groupIdx} text={group.text} />
             );
           }
 
@@ -271,4 +233,40 @@ export function Message({ message, detail, busy, onConfirm }: { message: UIMessa
       </div>
     </article>
   );
-}
+});
+
+const markdownComponents: Components = {
+  a: (props) => <a {...props} target="_blank" rel="noreferrer" />,
+  table: (props) => (
+    <div className="my-3 max-w-full overflow-x-auto rounded-xl bg-white/70 px-3 py-1 shadow-2xs">
+      <table {...props} />
+    </div>
+  ),
+};
+
+const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
+  return (
+    <div
+      className={cn(
+        "prose prose-sm prose-stone max-w-none break-words text-sm leading-7 text-foreground",
+        "prose-headings:font-serif prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-foreground",
+        "prose-h2:text-lg prose-h2:mt-4 prose-h2:mb-1.5",
+        "prose-h3:text-sm prose-h3:mt-3 prose-h3:mb-1",
+        "prose-p:my-2 first:prose-p:mt-0 last:prose-p:mb-0",
+        "prose-a:font-medium prose-a:text-primary prose-a:underline-offset-4 hover:prose-a:underline",
+        "prose-blockquote:border-l-primary/40 prose-blockquote:py-1 prose-blockquote:px-3.5 prose-blockquote:font-serif prose-blockquote:italic",
+        "prose-li:my-0.5",
+        "prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:rounded-xl prose-pre:bg-white/80",
+        "prose-img:max-h-80 prose-img:rounded-xl prose-img:object-cover",
+        "prose-table:text-xs",
+      )}
+    >
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        components={markdownComponents}
+      >
+        {text}
+      </Markdown>
+    </div>
+  );
+});

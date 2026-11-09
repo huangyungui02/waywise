@@ -124,14 +124,14 @@
 @layer components {
   /* Arc 悬浮主画布：极其纯净的无边框轻盈视口 */
   .arc-window {
-    @apply relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white/80 backdrop-blur-3xl transition-all duration-300;
+    @apply relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white/80 transition-colors duration-300;
     box-shadow: 0 20px 50px -12px rgba(25, 30, 25, 0.05),
                 inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
   }
 
   /* 极致纯净液态玻璃胶囊 */
   .pure-capsule {
-    @apply rounded-xl bg-white/70 backdrop-blur-2xl transition-all duration-200;
+    @apply rounded-xl bg-white/70 transition-colors duration-200;
     box-shadow: 0 10px 30px -4px rgba(20, 25, 20, 0.04),
                 inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
   }

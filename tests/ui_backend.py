@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import anyio
-from fakeredis.aioredis import FakeRedis
 from pydantic_ai import Agent, RunContext, ToolOutput
 from pydantic_ai.messages import (
     ModelResponse,
@@ -160,18 +160,19 @@ def create_app():
             ]
         )
 
-    backend = create_backend(
-        Settings(
-            _env_file=None,
-            DASHSCOPE_API_KEY="test-key",
-            AMAP_MAPS_API_KEY="test-map-key",
-            database_path=Path(os.environ["UI_TEST_DATABASE"]),
-            logfire_token="",
-        ),
-        agent,
-        title_model=FunctionModel(title),
-        redis_client=FakeRedis(decode_responses=True),
+    agent.model = FunctionModel(title, stream_function=stream)
+    settings = Settings(
+        _env_file=None,
+        DASHSCOPE_API_KEY="test-key",
+        AMAP_MAPS_API_KEY="test-map-key",
+        database_path=Path(os.environ["UI_TEST_DATABASE"]),
+        logfire_token="",
     )
+    with (
+        patch("app.Settings", return_value=settings),
+        patch("app.create_agent", return_value=agent),
+    ):
+        backend = create_backend()
 
     @backend.post("/api/__test/finish-search")
     async def finish_search(prompt: str):

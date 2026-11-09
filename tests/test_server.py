@@ -16,16 +16,15 @@ from test_app import configured  # noqa: F401
 from test_trip import itinerary  # noqa: F401
 
 import agent as agent_module
-from app import create_app
 from settings import Settings
 from trip import Trip, TripStore
 
 
 @pytest.mark.parametrize("fails", [False, True])
 def test_first_reply_names_conversation_without_thinking(
-    configured, monkeypatch, tmp_path, fails
+    app_factory, configured, monkeypatch, tmp_path, fails
 ):
-    import app
+    import replies
 
     calls = []
 
@@ -36,19 +35,18 @@ def test_first_reply_names_conversation_without_thinking(
         calls.append((messages, kwargs))
         if fails:
             raise RuntimeError("本地标题服务失败")
-        return await model_request(model, messages, **kwargs)
+        return await model_request(FunctionModel(title), messages, **kwargs)
 
     async def reply(messages, info):
         yield "请告诉我出发日期。"
 
-    monkeypatch.setattr(app, "model_request", naming)
+    monkeypatch.setattr(replies, "model_request", naming)
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(stream_function=reply)):
         with TestClient(
-            create_app(
+            app_factory(
                 Settings(database_path=tmp_path / "naming.db"),
                 agent,
-                title_model=FunctionModel(title),
             )
         ) as client:
             cid = client.post("/api/conversations").json()["id"]
@@ -80,7 +78,7 @@ def request(text):
     }
 
 
-def test_history_restart_and_server_owned_context(configured, tmp_path):
+def test_history_restart_and_server_owned_context(app_factory, configured, tmp_path):
     settings = Settings(database_path=tmp_path / "travel.db")
     seen = []
 
@@ -90,7 +88,7 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(stream_function=model)):
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             other = client.post("/api/conversations").json()["id"]
             assert (
@@ -105,7 +103,7 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
             assert history["summary"]["title"] == "去杭州"
             assert client.get(f"/api/conversations/{other}").json()["messages"] == []
         # 新应用实例从同一个文件恢复，而非复用内存。
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             body = request("住哪里")
             body["messages"].insert(
                 0,
@@ -147,7 +145,9 @@ def test_history_restart_and_server_owned_context(configured, tmp_path):
     asyncio.run(snapshots())
 
 
-def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
+def test_confirmed_trip_persists_and_deletes(
+    app_factory, configured, tmp_path, itinerary
+):
     settings = Settings(database_path=tmp_path / "travel.db")
     agent = agent_module.create_agent()
     count = 0
@@ -169,7 +169,7 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
             yield "交通住宿已确认。"
 
     with agent.override(model=FunctionModel(stream_function=model)):
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("确认安排")
@@ -220,7 +220,7 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
             )
 
         asyncio.run(check_snapshots())
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             restored = client.get(f"/api/conversations/{cid}").json()
             assert restored["trip"] == data["trip"]
             assert restored["summary"]["outcome"] == "cancelled"
@@ -229,7 +229,9 @@ def test_confirmed_trip_persists_and_deletes(configured, tmp_path, itinerary):
         assert TripStore(database=settings.database_path).get(cid) is None
 
 
-def test_failed_run_retains_question_and_marks_interrupted(configured, tmp_path):
+def test_failed_run_retains_question_and_marks_interrupted(
+    app_factory, configured, tmp_path
+):
     settings = Settings(database_path=tmp_path / "travel.db")
 
     async def broken(messages, info):
@@ -238,7 +240,7 @@ def test_failed_run_retains_question_and_marks_interrupted(configured, tmp_path)
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(stream_function=broken)):
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             cid = client.post("/api/conversations").json()["id"]
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("查询杭州")
@@ -250,9 +252,11 @@ def test_failed_run_retains_question_and_marks_interrupted(configured, tmp_path)
             assert client.delete(f"/api/conversations/{cid}").status_code == 204
 
 
-def test_stale_running_session_recovers_after_restart(configured, tmp_path):
+def test_stale_running_session_recovers_after_restart(
+    app_factory, configured, tmp_path
+):
     settings = Settings(database_path=tmp_path / "travel.db")
-    backend = create_app(settings)
+    backend = app_factory(settings)
     with TestClient(backend) as client:
         cid = client.post("/api/conversations").json()["id"]
 
@@ -264,7 +268,7 @@ def test_stale_running_session_recovers_after_restart(configured, tmp_path):
         )
 
     asyncio.run(mark_running())
-    with TestClient(create_app(settings)) as client:
+    with TestClient(app_factory(settings)) as client:
         assert (
             client.get(f"/api/conversations/{cid}").json()["summary"]["outcome"]
             == "cancelled"
@@ -277,7 +281,7 @@ def test_stale_running_session_recovers_after_restart(configured, tmp_path):
 
 
 @pytest.mark.parametrize("stop", [False, True])
-def test_disconnected_reply_replays_or_stops(configured, tmp_path, stop):
+def test_disconnected_reply_replays_or_stops(app_factory, configured, tmp_path, stop):
     """取消 HTTP 请求不会取消后台执行；重连不重跑模型，停止会保存部分回复。"""
     import anyio
     import httpx2
@@ -296,7 +300,7 @@ def test_disconnected_reply_replays_or_stops(configured, tmp_path, stop):
         yield "后台继续生成的完整结果。"
 
     agent = agent_module.create_agent()
-    backend = create_app(settings, agent)
+    backend = app_factory(settings, agent)
     with agent.override(model=FunctionModel(stream_function=model)):
         with TestClient(backend) as client:
             assert client.portal is not None
@@ -345,6 +349,7 @@ def test_disconnected_reply_replays_or_stops(configured, tmp_path, stop):
             )
 
             prefix = client.get(f"/api/conversations/{cid}").json()["recovery"]
+            assert set(prefix) == {"run_id", "cursor", "messages"}
             assert isinstance(prefix["cursor"], str)
             if stop:
                 assert (
@@ -382,59 +387,45 @@ def test_disconnected_reply_replays_or_stops(configured, tmp_path, stop):
             assert "已经生成的旅行建议" in str(detail["messages"])
             assert ("后台继续生成的完整结果" in str(detail["messages"])) is not stop
             assert requests == 1
+            # 同一条流从头重放；活动运行给出追平位置，结束后等待完整重放。
             checkpoint = detail["recovery"]
-            tail = client.get(
-                f"/api/conversations/{cid}/chat/stream",
-                params={"run_id": prefix["run_id"], "after": prefix["cursor"]},
-            )
-            events = [
-                json.loads(line[6:])
-                for line in tail.text.splitlines()
-                if line.startswith("data: ") and line != "data: [DONE]"
-            ]
-            progress = [
-                e["data"]["cursor"] for e in events if e["type"] == "data-progress"
-            ]
-            assert len(progress) == len(set(progress))
-            assert all(
-                tuple(map(int, cursor.split("-")))
-                > tuple(map(int, prefix["cursor"].split("-")))
-                for cursor in progress
-            )
-            assert (
-                prefix["events"] + [e for e in events if e["type"] != "data-progress"]
-                == checkpoint["events"]
-            )
-            assert checkpoint["outcome"] == detail["summary"]["outcome"]
-            assert isinstance(checkpoint["cursor"], str)
-            assert "已经生成的旅行建议" in str(checkpoint["events"])
-            # 即使详情读取后运行已经完成，该运行仍能按原身份和游标订阅。
+            assert checkpoint["cursor"] is None
             resumed = client.get(
                 f"/api/conversations/{cid}/chat/stream",
-                params={"run_id": checkpoint["run_id"], "after": checkpoint["cursor"]},
+                params={"run_id": checkpoint["run_id"]},
             )
             assert resumed.status_code == 200
-            assert "text-delta" not in resumed.text
+            assert "已经生成的旅行建议" in resumed.text
             assert "[DONE]" in resumed.text
+            events = [
+                json.loads(line[6:])
+                for line in resumed.text.splitlines()
+                if line.startswith("data: ") and line != "data: [DONE]"
+            ]
+            cursors = [
+                event["data"]["cursor"]
+                for event in events
+                if event["type"] == "data-progress"
+            ]
+            assert len(cursors) == len(set(cursors))
+            tail = client.get(
+                f"/api/conversations/{cid}/chat/stream",
+                params={"run_id": checkpoint["run_id"], "after": cursors[-1]},
+            )
+            assert "text-delta" not in tail.text
             assert (
                 client.get(
                     f"/api/conversations/{cid}/chat/stream",
-                    params={"run_id": "stale-run", "after": "0-0"},
+                    params={"run_id": "stale-run"},
                 ).status_code
                 == 409
             )
             assert (
                 client.get(
                     f"/api/conversations/{cid}/chat/stream",
-                    params={
-                        "run_id": checkpoint["run_id"],
-                        "after": f"{int(checkpoint['cursor'].split('-')[0]) + 1}-0",
-                    },
+                    params={"after": "999999999999999-0"},
                 ).status_code
-                == 422
-            )
-            assert (
-                client.get(f"/api/conversations/{cid}/chat/stream").status_code == 204
+                == 409
             )
             assert client.post(f"/api/conversations/{cid}/chat/stop").status_code == 204
             client.portal.call(release.set)
@@ -446,7 +437,7 @@ def test_disconnected_reply_replays_or_stops(configured, tmp_path, stop):
             )
 
 
-def test_shutdown_interrupts_background_reply(configured, tmp_path):
+def test_shutdown_interrupts_background_reply(app_factory, configured, tmp_path):
     import anyio
     import httpx2
 
@@ -459,7 +450,7 @@ def test_shutdown_interrupts_background_reply(configured, tmp_path):
         await anyio.sleep_forever()
 
     agent = agent_module.create_agent()
-    backend = create_app(settings, agent)
+    backend = app_factory(settings, agent)
     with agent.override(model=FunctionModel(stream_function=model)):
         with TestClient(backend) as client:
             assert client.portal is not None
@@ -483,14 +474,50 @@ def test_shutdown_interrupts_background_reply(configured, tmp_path):
 
             client.portal.call(disconnect)
         # 应用生命周期结束会取消并收尾后台任务，不等待模型自然完成。
-        with TestClient(create_app(settings, agent)) as client:
+        with TestClient(app_factory(settings, agent)) as client:
             detail = client.get(f"/api/conversations/{cid}").json()
             assert detail["summary"]["outcome"] == "cancelled"
             assert "退出服务" in str(detail["messages"])
-            assert detail["recovery"]["outcome"] == "cancelled"
-            assert "回复尚未完成" in str(detail["recovery"]["events"])
             replay = client.get(
                 f"/api/conversations/{cid}/chat/stream",
                 params={"run_id": detail["recovery"]["run_id"]},
             )
             assert "回复尚未完成" in replay.text
+
+
+def test_expired_sdk_stream_uses_canonical_history(
+    app_factory, configured, tmp_path, monkeypatch
+):
+    from redis_fastapi.exceptions import StreamNotFound
+    from stream_backend import LocalStreams
+
+    async def model(messages, info):
+        yield "保存到正式历史的旅行建议。"
+
+    agent = agent_module.create_agent()
+    with agent.override(model=FunctionModel(stream_function=model)):
+        with TestClient(
+            app_factory(Settings(database_path=tmp_path / "expired.db"), agent)
+        ) as client:
+            cid = client.post("/api/conversations").json()["id"]
+            client.post(f"/api/conversations/{cid}/chat", json=request("过期恢复"))
+            run_id = client.get(f"/api/conversations/{cid}").json()["recovery"][
+                "run_id"
+            ]
+
+            async def expired(*args, **kwargs):
+                raise StreamNotFound("expired")
+
+            monkeypatch.setattr(LocalStreams, "follow", expired)
+            detail = client.get(f"/api/conversations/{cid}").json()
+            assert detail["recovery"] is None
+            assert "保存到正式历史的旅行建议" in str(detail["messages"])
+            assert (
+                client.get(f"/api/conversations/{cid}/chat/stream").status_code == 204
+            )
+            assert (
+                client.get(
+                    f"/api/conversations/{cid}/chat/stream", params={"run_id": run_id}
+                ).status_code
+                == 409
+            )

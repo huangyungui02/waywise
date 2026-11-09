@@ -4,8 +4,6 @@ import { api, type Conversation, type Detail } from "@/api";
 interface CachedConversation {
   id: string;
   schemaVersion: 2;
-  runId: string;
-  cursor: string;
   detail: Detail;
 }
 export interface LoadedConversation { detail: Detail; cached: boolean }
@@ -45,11 +43,11 @@ export async function loadConversation(id: string, signal?: AbortSignal): Promis
   return { detail: await api<Detail>(`/conversations/${id}`, { signal }), cached: false };
 }
 
-export function cacheConversation(detail: Detail, runId: string, cursor: string, messages: UIMessage[]) {
+export function cacheConversation(detail: Detail, messages: UIMessage[]) {
   return access<IDBValidKey | undefined>("readwrite", (store) => forgotten.has(detail.summary.id)
     ? store.delete(detail.summary.id)
     : store.put({
-      id: detail.summary.id, schemaVersion: 2, runId, cursor,
+      id: detail.summary.id, schemaVersion: 2,
       detail: { ...detail, messages, recovery: null },
     } satisfies CachedConversation));
 }

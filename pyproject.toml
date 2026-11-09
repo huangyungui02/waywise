@@ -11,6 +11,7 @@ dependencies = [
     "logfire[fastapi]>=5.4,<6",
     "sqlmodel>=0.0.48",
     "redis>=6.4,<9",
+    "fastapi-redis-sdk",
 ]
 
 [dependency-groups]
@@ -18,3 +19,6 @@ dev = [
     "fakeredis>=2.32,<3",
     "pytest>=8,<10",
 ]
+
+[tool.uv.sources]
+fastapi-redis-sdk = { git = "https://github.com/redis/fastapi-redis-sdk.git", rev = "fd7f483022c9b97ae437e972e2b84ea54b3034e6" }
