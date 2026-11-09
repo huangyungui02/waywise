@@ -1,5 +1,9 @@
 import type { UIMessage } from 'ai';
 
+export function apiUrl(path: string): string {
+	return `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')}/api${path}`;
+}
+
 export interface Conversation {
 	id: string;
 	title: string;
@@ -61,7 +65,7 @@ export async function api<T>(
 	init?: RequestInit,
 	request: typeof fetch = fetch
 ): Promise<T> {
-	const response = await request(`/api${path}`, init);
+	const response = await request(apiUrl(path), init);
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}));
 		throw new ApiError(

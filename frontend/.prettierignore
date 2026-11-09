@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Native Xcode project and Capacitor-generated assets
+/ios/

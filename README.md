@@ -91,6 +91,10 @@ docker compose start travel-agent
 迁移前先备份原数据库和容器数据；复制时两端服务都应停止。
 默认只绑定本机地址，当前没有用户登录与多用户隔离。
 
+## iOS 个人客户端
+
+支持通过 Capacitor 将现有前端打包为 iOS App，连接个人后端。配置后端 HTTPS 地址、跨域来源及 Xcode 运行步骤见 [iOS 使用说明](docs/ios.md)。当前无登录与多用户隔离，请通过个人 VPN 或受控网络使用。
+
 ## 可观测性（Logfire）
 
 可选接入 [Logfire](https://pydantic.dev/docs/ai/integrations/logfire/)，查看 API 请求、
@@ -137,7 +141,7 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 - 浏览器使用 IndexedDB 缓存已读取的消息以便快速预览；同步期间会显示提示，最终内容以服务端为准。清空浏览器缓存不会删除服务端历史。
 - 后台运行使用单个后端进程，默认最多同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整。服务重启会中断未完成的回复，保留已保存的消息和完整步骤，不会自动重跑工具；请勿配置多个后端 worker 或实例共享该数据库。
 - 尚未提供用户登录和多用户数据隔离，适合本地个人使用。
-- Capacitor 移动端尚未接入。
+- Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
 ## 参与开发
 

@@ -145,13 +145,15 @@
 		</nav>
 	</div>
 {/snippet}
-<div class="flex h-dvh w-full overflow-hidden sm:p-2.5 md:p-3">
+<div
+	class="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)] sm:p-2.5 sm:pt-[max(0.625rem,env(safe-area-inset-top))] md:p-3 md:pt-[max(0.75rem,env(safe-area-inset-top))]"
+>
 	<aside class="hidden w-60 shrink-0 md:block">{@render sidebar()}</aside>
 	<div
 		class="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-card/80 shadow-sm"
 	>
 		<header
-			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] md:hidden"
+			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-4 md:hidden"
 		>
 			<Button
 				variant="ghost"
@@ -176,7 +178,10 @@
 	</div>
 </div>
 <Sheet.Root bind:open={mobileOpen}
-	><Sheet.Content side="left" showCloseButton={false} class="w-64 p-0"
+	><Sheet.Content
+		side="left"
+		showCloseButton={false}
+		class="w-64 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
 		><Sheet.Header class="sr-only"
 			><Sheet.Title>我的旅行</Sheet.Title><Sheet.Description
 				>新建、切换或删除旅行会话</Sheet.Description

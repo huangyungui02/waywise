@@ -210,6 +210,44 @@ def test_web_endpoints(app_factory, configured, tmp_path):
         assert response.json() == []
 
 
+def test_ios_cors(app_factory, configured, tmp_path):
+    settings = Settings(
+        database_path=tmp_path / "test.db",
+        cors_origins=["capacitor://localhost"],
+    )
+    with TestClient(app_factory(settings)) as client:
+        for method in ["GET", "POST", "PATCH", "DELETE"]:
+            response = client.options(
+                "/api/conversations",
+                headers={
+                    "Origin": "capacitor://localhost",
+                    "Access-Control-Request-Method": method,
+                    "Access-Control-Request-Headers": "content-type",
+                },
+            )
+            assert response.status_code == 200
+            assert (
+                response.headers["access-control-allow-origin"]
+                == "capacitor://localhost"
+            )
+        response = client.get(
+            "/api/conversations", headers={"Origin": "capacitor://localhost"}
+        )
+        assert response.json() == []
+        assert (
+            response.headers["access-control-allow-origin"] == "capacitor://localhost"
+        )
+        response = client.options(
+            "/api/conversations",
+            headers={
+                "Origin": "https://other.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert response.status_code == 400
+        assert "access-control-allow-origin" not in response.headers
+
+
 def test_web_allows_more_than_50_model_requests(app_factory, configured, tmp_path):
     requests = 0
 

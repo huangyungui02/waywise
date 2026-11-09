@@ -7,6 +7,7 @@ from typing import Annotated, Any, cast
 import anyio
 import logfire
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StringConstraints
@@ -75,6 +76,13 @@ def create_app() -> FastAPI:
                 await streams.aclose()
 
     api = FastAPI(title="国内旅行助手", lifespan=lifespan)
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type"],
+        expose_headers=["x-vercel-ai-ui-message-stream"],
+    )
     api.add_exception_handler(StreamError, stream_error_handler)
 
     if token := settings.logfire_token.get_secret_value():
