@@ -446,8 +446,10 @@ for (const mobile of [false, true]) {
 		await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
 		await page.goto('/');
 		for (const newConversation of [false, true]) {
-			if (newConversation)
+			if (newConversation) {
+				if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
 				await page.getByRole('button', { name: '开始一段旅行', exact: true }).click();
+			}
 			const card = page.getByRole('region', { name: '旅行基本信息' });
 			await expect(card.getByRole('textbox')).toHaveCount(2);
 			await expect(card.getByRole('spinbutton')).toHaveCount(2);
