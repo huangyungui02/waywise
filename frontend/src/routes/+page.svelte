@@ -25,9 +25,11 @@
 	}
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col">
+<div class="relative flex min-h-0 flex-1 flex-col">
 	<section class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8">
-		<div class="mx-auto max-w-2xl py-6 sm:py-12">
+		<div
+			class="mx-auto max-w-2xl pt-20 pb-[calc(var(--composer-height,5.5rem)+1.5rem)] sm:pt-24 md:pt-12"
+		>
 			<TravelForm bind:values />{#if error}<p role="alert">{error}</p>{/if}
 		</div>
 	</section>

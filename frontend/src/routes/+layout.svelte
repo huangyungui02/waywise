@@ -149,15 +149,21 @@
 	<aside class="hidden w-60 shrink-0 md:block">{@render sidebar()}</aside>
 	<div class="arc-window">
 		<header
-			class="grid h-14 shrink-0 grid-cols-[2.25rem_minmax(0,1fr)_2.25rem] items-center gap-2 px-4 md:hidden"
+			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] md:hidden"
 		>
 			<Button
 				variant="ghost"
 				size="icon"
+				class="liquid-glass pointer-events-auto size-11 rounded-full"
 				aria-label="打开旅行列表"
 				onclick={() => (mobileOpen = true)}><Menu /></Button
 			>
-			<h1 class="truncate text-center font-serif" {title}>{title}</h1>
+			<h1
+				class="liquid-glass mx-auto max-w-full truncate rounded-full px-4 py-2 text-center text-sm font-medium"
+				{title}
+			>
+				{title}
+			</h1>
 		</header>
 		{#if error}<p role="alert" class="p-3 text-sm text-destructive">
 				{error}<Button variant="ghost" onclick={() => (error = '')}>关闭错误提示</Button>
@@ -168,7 +174,7 @@
 	</div>
 </div>
 <Sheet.Root bind:open={mobileOpen}
-	><Sheet.Content side="left" class="w-64 p-0"
+	><Sheet.Content side="left" showCloseButton={false} class="w-64 p-0"
 		><Sheet.Header class="sr-only"
 			><Sheet.Title>我的旅行</Sheet.Title><Sheet.Description
 				>新建、切换或删除旅行会话</Sheet.Description

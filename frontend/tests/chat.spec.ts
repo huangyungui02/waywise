@@ -430,6 +430,16 @@ for (const mobile of [false, true]) {
 			)
 		).toBe(true);
 		const scroller = article.locator('../..');
+		const viewportBox = (await scroller.boundingBox())!;
+		const composerBox = (await page.locator('form').boundingBox())!;
+		expect(viewportBox.y + viewportBox.height).toBeGreaterThan(composerBox.y + composerBox.height);
+		await expect
+			.poll(async () => {
+				const lastLine = (await article.locator('p').last().boundingBox())!;
+				return lastLine.y + lastLine.height <= composerBox.y;
+			})
+			.toBe(true);
+
 		await scroller.evaluate((el) => {
 			el.scrollTop = 0;
 		});

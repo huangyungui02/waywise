@@ -24,10 +24,23 @@
 	}
 </script>
 
-<div class="shrink-0 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-6">
+<div
+	class="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-6"
+	{@attach (node) => {
+		const parent = node.parentElement!;
+		const observer = new ResizeObserver(() => {
+			parent.style.setProperty('--composer-height', `${node.getBoundingClientRect().height}px`);
+		});
+		observer.observe(node);
+		return () => {
+			observer.disconnect();
+			parent.style.removeProperty('--composer-height');
+		};
+	}}
+>
 	<form
 		onsubmit={submit}
-		class="composer pure-capsule mx-auto flex max-w-2xl items-center gap-2 rounded-full p-1.5 pl-4 focus-within:shadow-[0_12px_40px_-6px_rgba(25,35,28,0.1)]"
+		class="composer liquid-glass pointer-events-auto mx-auto flex max-w-2xl items-end gap-2 rounded-[2rem] p-2 pl-5"
 	>
 		<Textarea
 			aria-label="旅行需求"
@@ -67,12 +80,14 @@
 
 <style>
 	.composer {
-		border: 1px solid #e0e6da;
-		background: #fff;
-		box-shadow: 0 6px 24px -12px rgb(31 56 40 / 16%);
+		transition:
+			box-shadow 180ms ease,
+			border-color 180ms ease;
 	}
 	.composer:focus-within {
-		border-color: #b5c7b1;
-		box-shadow: 0 8px 28px -12px rgb(31 56 40 / 18%);
+		border-color: color-mix(in srgb, var(--primary) 25%, white);
+		box-shadow:
+			0 12px 40px -12px rgb(25 56 46 / 22%),
+			inset 0 1px 0 rgb(255 255 255 / 95%);
 	}
 </style>

@@ -124,6 +124,32 @@
 }
 
 @layer components {
+	.liquid-glass {
+		border: 1px solid rgb(255 255 255 / 80%);
+		background: linear-gradient(145deg, rgb(255 255 255 / 78%), rgb(247 249 246 / 52%));
+		-webkit-backdrop-filter: blur(24px) saturate(160%);
+		backdrop-filter: blur(24px) saturate(160%);
+		box-shadow:
+			0 8px 32px -10px rgb(25 56 46 / 20%),
+			0 1px 4px rgb(25 56 46 / 6%),
+			inset 0 1px 0 rgb(255 255 255 / 95%),
+			inset 0 -1px 0 rgb(255 255 255 / 35%);
+	}
+
+	@supports not (backdrop-filter: blur(1px)) {
+		.liquid-glass {
+			background: var(--background);
+		}
+	}
+
+	@media (prefers-reduced-transparency: reduce) {
+		.liquid-glass {
+			background: var(--background);
+			-webkit-backdrop-filter: none;
+			backdrop-filter: none;
+		}
+	}
+
 	/* Arc 悬浮主画布：极其纯净的无边框轻盈视口 */
 	.arc-window {
 		@apply relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white/80 transition-colors duration-300;

@@ -48,16 +48,19 @@
 	}}
 	class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8"
 >
-	<div {@attach follow} class="mx-auto flex max-w-2xl flex-col gap-6 py-6 sm:py-8">
+	<div
+		{@attach follow}
+		class="mx-auto flex max-w-2xl flex-col gap-6 pt-20 pb-[calc(var(--composer-height,5.5rem)+1.5rem)] sm:pt-24 md:pt-8"
+	>
 		{@render children()}
 	</div>
 </div>
 {#if !atBottom}
 	<Button
-		variant="outline"
+		variant="ghost"
 		size="icon"
 		aria-label="回到最新消息"
-		class="absolute bottom-24 left-1/2 size-8 -translate-x-1/2 rounded-full shadow-md"
+		class="liquid-glass absolute bottom-[calc(var(--composer-height,5.5rem)+0.25rem)] left-1/2 size-8 -translate-x-1/2 rounded-full"
 		onclick={latest}><ArrowDown /></Button
 	>
 {/if}
