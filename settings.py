@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     database_path: Path = ROOT / "data" / "travel.db"
-    redis_url: SecretStr = SecretStr("redis://localhost:6372/0")
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
     max_concurrent_runs: int = Field(default=4, ge=1)
     travel_model: str = "qwen3.8-flash"
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"

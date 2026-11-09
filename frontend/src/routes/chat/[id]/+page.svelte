@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Chat from '#lib/components/Chat.svelte';
+	import Chat from '#lib/chat/Chat.svelte';
 	import type { PageProps } from './$types';
 	let { data }: PageProps = $props();
 </script>

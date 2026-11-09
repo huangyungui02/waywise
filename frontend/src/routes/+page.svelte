@@ -2,9 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { goto, invalidate } from '$app/navigation';
 	import { api, type Conversation } from '#lib/api.js';
-	import TravelForm from '#lib/components/TravelForm.svelte';
-	import Composer from '#lib/components/Composer.svelte';
-	import { travelPrompt } from '#lib/components/travel-brief.js';
+	import TravelForm from '#lib/chat/TravelForm.svelte';
+	import Composer from '#lib/chat/Composer.svelte';
+	import { travelPrompt } from '#lib/chat/travel-brief.js';
 	let values = $state<Record<string, string>>({});
 	let creating = $state(false);
 	let error = $state('');

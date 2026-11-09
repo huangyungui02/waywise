@@ -30,10 +30,13 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 | `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 Web 服务类型 Key |
 | `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
 | `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`），需支持 Responses 接口、内置搜索和工具调用 |
-| `REDIS_URL` | 否 | 本地默认 `redis://localhost:6372/0`；Compose 自动使用内网 Redis |
+| `REDIS_URL` | 否 | 本地默认 `redis://localhost:6379/0`；Compose 自动使用内网 Redis |
 | `REDIS_STREAM_MAX_RUN` | 否 | SDK 运行最长时间，默认 `3600` 秒，最多 `86400` 秒 |
 | `REDIS_STREAM_DONE_TTL` | 否 | SDK 已结束流的保留时间，默认 `120` 秒，且不超过运行剩余寿命 |
 | `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
+
+Redis 相关配置均可从 `.env` 省略；Compose 自动连接自带的 Redis，
+`REDIS_URL` 在 Compose 中由 `compose.yaml` 覆盖，流寿命配置省略时使用上表默认值。
 
 Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
 已有飞猪凭据请通过 `FLYAI_API_KEY` 配置。模型、搜索及其他服务费用以提供方为准。
@@ -62,7 +65,7 @@ docker compose down
 Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发使用。
 
 Compose 同时启动 Redis，应用等待其健康检查通过后启动。Redis 使用 `redis-data` 卷和 AOF，
-容器间通过 `redis:6379` 连接；宿主机仅在 `127.0.0.1:6372` 提供访问。
+容器间通过 `redis:6379` 连接；宿主机仅在 `127.0.0.1:6379` 提供访问。
 Redis 保存临时回复事件；长期历史和行程仍在 SQLite 中。流的寿命由 SDK 原生配置控制，到期后读取 SQLite 历史。
 当前使用 `fastapi-redis-sdk` 的 `feature/resumable-streams` 分支，固定 commit 为 `fd7f483022c9b97ae437e972e2b84ea54b3034e6`。
 该功能要求 Redis ≥ 8.6.2，推荐 ≥ 8.6.6；Compose 固定使用 Redis 8.8.0。
@@ -156,7 +159,7 @@ pnpm --dir frontend install --frozen-lockfile
 `replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
 官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
 
-先确保本地 Redis 在 `localhost:6372` 运行；也可以只启动 Compose 中的 Redis：
+先确保本地 Redis 在 `localhost:6379` 运行；也可以只启动 Compose 中的 Redis：
 
 ```bash
 docker compose up -d redis
@@ -188,12 +191,12 @@ pnpm --dir frontend test:e2e
 ```
 
 Python 默认使用 SDK 边界的本地替身和 FakeRedis，不依赖本地 Redis。
-浏览器测试使用真实 SDK 和本地 `localhost:6372` Redis，运行前执行 `docker compose up -d redis`。
+浏览器测试使用真实 SDK 和本地 `localhost:6379` Redis，运行前执行 `docker compose up -d redis`。
 两者都不调用真实模型或旅游服务。
 需要验证真实 Redis Streams 时，可显式运行隔离键测试（不会清空 Redis）：
 
 ```bash
-uv run python -m pytest -q tests/test_replies.py --redis-url redis://localhost:6372/0
+uv run python -m pytest -q tests/test_replies.py --redis-url redis://localhost:6379/0
 ```
 
 实际模型、地图和飞猪服务需要另行配置凭据并验证。
