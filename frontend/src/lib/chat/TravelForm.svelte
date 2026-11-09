@@ -3,7 +3,6 @@
 	import * as Field from '#lib/components/ui/field/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
-	import * as ToggleGroup from '#lib/components/ui/toggle-group/index.js';
 	import DateField from './DateField.svelte';
 	let { values = $bindable<Record<string, string>>({}) }: { values?: Record<string, string> } =
 		$props();
@@ -41,13 +40,14 @@
 					earliest={values['出发日期']}
 				/>
 			</div>
-			<div class="grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="flex flex-col gap-3">
 					<Field.Field
 						><Field.Label for="travelers">同行人数</Field.Label><Input
 							id="travelers"
 							aria-label="同行人数"
 							type="number"
+							class="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 							min="1"
 							step="1"
 							placeholder="几个人"
@@ -61,7 +61,7 @@
 						><Field.Legend class="sr-only">同行情况</Field.Legend>
 						<div class="flex gap-4">
 							{#each ['老人', '小孩'] as label (label)}
-								<label class="flex items-center gap-2 text-xs"
+								<label class="flex items-center gap-2 text-xs text-muted-foreground"
 									><Checkbox
 										checked={values[`${label}同行`] === '有'}
 										onCheckedChange={(checked) => (values[`${label}同行`] = checked ? '有' : '')}
@@ -77,8 +77,9 @@
 							id="budget"
 							aria-label="预算"
 							type="number"
+							class="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 							min="0"
-							placeholder="预计花费"
+							placeholder={values['预算口径'] === '人均' ? '每人预算（元）' : '总预算（元）'}
 							bind:value={
 								() => values['预算金额'] ?? '',
 								(v) => {
@@ -88,22 +89,12 @@
 							}
 						/></Field.Field
 					>
-					<Field.Field
-						><Field.Label class="sr-only">预算口径</Field.Label><ToggleGroup.Root
-							type="single"
-							aria-label="预算口径"
-							spacing={1}
-							size="sm"
-							variant="outline"
-							value={values['预算口径'] || '总共'}
-							onValueChange={(v) => {
-								if (v) values['预算口径'] = v;
-							}}
-							><ToggleGroup.Item value="人均">人均</ToggleGroup.Item><ToggleGroup.Item value="总共"
-								>总共</ToggleGroup.Item
-							></ToggleGroup.Root
-						></Field.Field
-					>
+					<label class="flex items-center gap-2 text-xs text-muted-foreground">
+						<Checkbox
+							checked={values['预算口径'] === '人均'}
+							onCheckedChange={(checked) => (values['预算口径'] = checked ? '人均' : '总共')}
+						/>人均预算
+					</label>
 				</div>
 			</div>
 		</Field.Group>

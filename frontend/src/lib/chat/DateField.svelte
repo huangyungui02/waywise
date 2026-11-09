@@ -18,7 +18,10 @@
 	<Popover.Root bind:open>
 		<Popover.Trigger
 			id={label}
-			class={buttonVariants({ variant: 'outline', class: 'w-full justify-start' })}
+			class={buttonVariants({
+				variant: 'outline',
+				class: ['w-full justify-start font-normal', !selected && 'text-muted-foreground']
+			})}
 			aria-label={label}
 			>{selected ? `${selected.month}月${selected.day}日` : '选择日期'}</Popover.Trigger
 		>

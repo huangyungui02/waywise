@@ -45,9 +45,9 @@ for (const mobile of [false, true]) {
 		await page.getByRole('checkbox', { name: '有老人', exact: true }).check();
 		await page.getByRole('checkbox', { name: '有老人', exact: true }).uncheck();
 		await expect(page.getByRole('checkbox', { name: '有老人', exact: true })).not.toBeChecked();
-		await page.getByRole('radio', { name: '人均', exact: true }).check();
-		await page.getByRole('radio', { name: '总共', exact: true }).check();
-		await expect(page.getByRole('radio', { name: '人均', exact: true })).not.toBeChecked();
+		await page.getByRole('checkbox', { name: '人均预算', exact: true }).check();
+		await page.getByRole('checkbox', { name: '人均预算', exact: true }).uncheck();
+		await expect(page.getByRole('checkbox', { name: '人均预算', exact: true })).not.toBeChecked();
 	});
 }
 
@@ -228,7 +228,7 @@ test('表单合并发送后显示原文，刷新恢复文字，聊天调整需�
 	await selectDate(page, '返回日期', '2026-12-03');
 	await page.getByLabel('同行人数', { exact: true }).fill('2');
 	await page.getByLabel('预算', { exact: true }).fill('2000');
-	await page.getByRole('radio', { name: '人均', exact: true }).check();
+	await page.getByRole('checkbox', { name: '人均预算', exact: true }).check();
 	await page.getByRole('checkbox', { name: '有老人', exact: true }).check();
 	await page.getByRole('checkbox', { name: '有小孩', exact: true }).check();
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('想住湖边');
@@ -476,8 +476,8 @@ for (const mobile of [false, true]) {
 			const card = page.getByRole('region', { name: '旅行基本信息' });
 			await expect(card.getByRole('textbox')).toHaveCount(2);
 			await expect(card.getByRole('spinbutton')).toHaveCount(2);
-			await expect(card.getByRole('checkbox')).toHaveCount(2);
-			await expect(card.getByRole('radio', { name: '总共' })).toBeChecked();
+			await expect(card.getByRole('checkbox')).toHaveCount(3);
+			await expect(card.getByRole('checkbox', { name: '人均预算' })).not.toBeChecked();
 			await expect(page.getByText('旅行想法与期待', { exact: true })).toHaveCount(0);
 			await expect(page.getByRole('button', { name: '开始规划', exact: true })).toHaveCount(0);
 			const composer = page.getByRole('textbox', { name: '旅行需求' });

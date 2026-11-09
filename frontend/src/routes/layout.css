@@ -54,11 +54,11 @@
 
 :root {
 	--background: #f8f7f4;
-	--foreground: #181b19;
+	--foreground: #34443a;
 	--card: #ffffff;
-	--card-foreground: #181b19;
+	--card-foreground: var(--foreground);
 	--popover: #ffffff;
-	--popover-foreground: #181b19;
+	--popover-foreground: var(--foreground);
 	--primary: #19382e;
 	--primary-foreground: #ffffff;
 	--secondary: #eeeae0;
@@ -69,8 +69,8 @@
 	--accent-foreground: #181b19;
 	--destructive: oklch(0.577 0.245 27.325);
 	--border: #d5ddd6;
-	--input: #9eafa2;
-	--ring: #19382e;
+	--input: var(--border);
+	--ring: #789183;
 	--chart-1: oklch(0.87 0 0);
 	--chart-2: oklch(0.556 0 0);
 	--chart-3: oklch(0.439 0 0);
