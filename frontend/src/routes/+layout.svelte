@@ -3,10 +3,14 @@
 	import { resolve } from '$app/paths';
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Compass, Menu, Plus, Trash2 } from '@lucide/svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Compass, Menu, Plus, Trash2, Ellipsis, Pencil } from '@lucide/svelte';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import * as Field from '#lib/components/ui/field/index.js';
+	import * as Popover from '#lib/components/ui/popover/index.js';
 	import * as Sheet from '#lib/components/ui/sheet/index.js';
 	import * as Dialog from '#lib/components/ui/alert-dialog/index.js';
+	import * as RenameDialog from '#lib/components/ui/dialog/index.js';
 	import { api, type Conversation } from '#lib/api.js';
 	import { forgetConversation } from '#lib/chat/cache.js';
 	import type { LayoutProps } from './$types';
@@ -14,6 +18,27 @@
 	let title = $derived(
 		data.conversations.find((conversation) => conversation.id === page.params.id)?.title ?? '知途'
 	);
+	let editing = $state<string | null>(null);
+	let draftTitle = $state('');
+	let saving = $state(false);
+	let editError = $state('');
+	async function rename(id: string) {
+		saving = true;
+		editError = '';
+		try {
+			await api(`/conversations/${id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ title: draftTitle })
+			});
+			await invalidate('app:conversations');
+			editing = null;
+		} catch (cause) {
+			editError = String(cause);
+		} finally {
+			saving = false;
+		}
+	}
 	let mobileOpen = $state(false);
 	let deleting = $state<Conversation | null>(null);
 	let removing = $state(false);
@@ -78,13 +103,41 @@
 							>{new Date(conversation.updated_at).toLocaleDateString('zh-CN')}</span
 						>
 					</a>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						class="absolute top-1/2 right-1 -translate-y-1/2"
-						aria-label={`删除 ${conversation.title}`}
-						onclick={() => (deleting = conversation)}><Trash2 /></Button
-					>
+					<Popover.Root>
+						<Popover.Trigger
+							class={buttonVariants({
+								variant: 'ghost',
+								size: 'icon-sm',
+								class:
+									'absolute top-1/2 right-1 -translate-y-1/2 opacity-40 hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-60'
+							})}
+							aria-label={`更多操作 ${conversation.title}`}><Ellipsis /></Popover.Trigger
+						>
+						<Popover.Content align="end" class="w-36 gap-1 p-1">
+							<Popover.Close
+								class={buttonVariants({
+									variant: 'ghost',
+									size: 'sm',
+									class: 'w-full justify-start'
+								})}
+								onclick={() => {
+									draftTitle = conversation.title;
+									editError = '';
+									editing = conversation.id;
+								}}><Pencil data-icon="inline-start" />重命名</Popover.Close
+							>
+							<Popover.Close
+								class={buttonVariants({
+									variant: 'destructive',
+									size: 'sm',
+									class: 'w-full justify-start'
+								})}
+								aria-label={`删除 ${conversation.title}`}
+								onclick={() => (deleting = conversation)}
+								><Trash2 data-icon="inline-start" />删除</Popover.Close
+							>
+						</Popover.Content>
+					</Popover.Root>
 				</div>
 			{:else}<p class="px-3 py-10 text-center font-serif text-xs text-muted-foreground">
 					心之所向，皆为旅程。<br />随时开启一段漫游。
@@ -146,3 +199,48 @@
 		>
 	</Dialog.Content>
 </Dialog.Root>
+
+<RenameDialog.Root
+	open={editing !== null}
+	onOpenChange={(open) => {
+		if (!open && !saving) editing = null;
+	}}
+>
+	<RenameDialog.Content
+		showCloseButton={false}
+		onOpenAutoFocus={(event) => {
+			event.preventDefault();
+			document.getElementById('conversation-title')?.focus();
+		}}
+	>
+		<RenameDialog.Header>
+			<RenameDialog.Title>重命名</RenameDialog.Title>
+			<RenameDialog.Description>为这段旅行设置一个标题。</RenameDialog.Description>
+		</RenameDialog.Header>
+		<form
+			class="flex flex-col gap-4"
+			onsubmit={(event) => {
+				event.preventDefault();
+				if (editing) void rename(editing);
+			}}
+		>
+			<Field.Field>
+				<Field.Label for="conversation-title">会话标题</Field.Label>
+				<Input
+					id="conversation-title"
+					bind:value={draftTitle}
+					maxlength={100}
+					required
+					disabled={saving}
+				/>
+			</Field.Field>
+			{#if editError}<p role="alert" class="text-xs text-destructive">{editError}</p>{/if}
+			<RenameDialog.Footer>
+				<Button variant="ghost" disabled={saving} onclick={() => (editing = null)}>取消</Button>
+				<Button type="submit" disabled={saving || !draftTitle.trim()}
+					>{saving ? '保存中…' : '保存'}</Button
+				>
+			</RenameDialog.Footer>
+		</form>
+	</RenameDialog.Content>
+</RenameDialog.Root>

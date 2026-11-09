@@ -159,6 +159,8 @@ test('新建、发送、工具展示、刷新恢复、切换与删除', async ({
 		path: '/private/tmp/travel-agent-desktop.png',
 		fullPage: true
 	});
+	await expect(page.getByRole('button', { name: `删除 ${prompt}` })).toHaveCount(0);
+	await page.getByRole('button', { name: `更多操作 ${prompt}` }).click();
 	await page.getByRole('button', { name: `删除 ${prompt}` }).click();
 	await expect(page.getByRole('alertdialog')).toBeVisible();
 	await page.getByRole('button', { name: '确认删除', exact: true }).click();
@@ -186,6 +188,14 @@ test('手机界面可输入、发送和读取历史，页面没有横向溢出',
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true
 	);
+	await page.getByRole('button', { name: '打开旅行列表' }).click();
+	await page.getByRole('button', { name: `更多操作 ${detail.summary.title}` }).click();
+	await page.getByRole('button', { name: `删除 ${detail.summary.title}` }).click();
+	await expect(page.getByRole('alertdialog')).toBeVisible();
+	await page.getByRole('button', { name: '保留', exact: true }).click();
+	await expect(page.getByRole('alertdialog')).toBeHidden();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: '我的旅行' })).toBeHidden();
 	await page.screenshot({
 		path: '/private/tmp/travel-agent-mobile.png',
 		fullPage: true
@@ -923,3 +933,39 @@ test('新会话在后台断流后重新可见时自动恢复', async ({ page }) 
 	await expect(page.getByRole('region', { name: '交通与住宿方案' })).toBeVisible();
 	expect(submissions).toBe(0);
 });
+
+for (const mobile of [false, true]) {
+	test(`${mobile ? '手机' : '桌面'}会话菜单重命名自动聚焦并持久保存`, async ({ page }) => {
+		await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+		const conversation = await (await page.request.post('/api/conversations')).json();
+		await page.goto(`/chat/${conversation.id}`);
+		if (mobile) await page.getByRole('button', { name: '打开旅行列表' }).click();
+		await page.getByRole('button', { name: `更多操作 ${conversation.title}`, exact: true }).click();
+		await page.getByRole('button', { name: '重命名', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: '重命名', exact: true });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('textbox', { name: '会话标题' })).toBeFocused();
+		if (mobile)
+			await page.screenshot({
+				path: '/private/tmp/travel-agent-rename-theme.png',
+				animations: 'disabled'
+			});
+		await expect(page.getByRole('textbox', { name: '会话标题' })).toHaveValue(conversation.title);
+		await page.getByRole('textbox', { name: '会话标题' }).fill('  杭州周末游  ');
+		await page.getByRole('button', { name: '保存', exact: true }).click();
+		await expect(dialog).toBeHidden();
+		if (mobile) {
+			await page.keyboard.press('Escape');
+			await expect(page.locator('header h1')).toHaveText('杭州周末游');
+		}
+		await page.reload();
+		const detail = await (await page.request.get(`/api/conversations/${conversation.id}`)).json();
+		expect(detail.summary.title).toBe('杭州周末游');
+		if (mobile) await expect(page.locator('header h1')).toHaveText('杭州周末游');
+		else await expect(page.locator('a[aria-current="page"]')).toContainText('杭州周末游');
+		const invalid = await page.request.patch(`/api/conversations/${conversation.id}`, {
+			data: { title: '   ' }
+		});
+		expect(invalid.status()).toBe(422);
+	});
+}

@@ -2,13 +2,14 @@
 
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import anyio
 import logfire
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, StringConstraints
 from pydantic_ai import Agent
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
@@ -27,6 +28,12 @@ from agent import create_agent
 from replies import Replies, stream_response
 from settings import ROOT, Settings
 from trip import Trip, TripStore
+
+
+class ConversationTitle(BaseModel):
+    title: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
 
 
 def create_app() -> FastAPI:
@@ -112,6 +119,14 @@ def create_app() -> FastAPI:
             messages=[],
         )
         return asdict(summary)
+
+    @api.patch("/api/conversations/{conversation_id}", status_code=204)
+    async def rename_conversation(conversation_id: str, body: ConversationTitle):
+        saved = await load(conversation_id)
+        if not await conversations.name(
+            source=saved.summary, title=body.title, manual=True
+        ):
+            raise HTTPException(409, "会话已更新，请重新编辑标题")
 
     @api.get("/api/conversations/{conversation_id}")
     async def get_conversation(conversation_id: str):

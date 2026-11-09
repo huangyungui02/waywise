@@ -68,8 +68,8 @@
 	--accent: #e4ded1;
 	--accent-foreground: #181b19;
 	--destructive: oklch(0.577 0.245 27.325);
-	--border: transparent;
-	--input: transparent;
+	--border: #d5ddd6;
+	--input: #9eafa2;
 	--ring: #19382e;
 	--chart-1: oklch(0.87 0 0);
 	--chart-2: oklch(0.556 0 0);
@@ -83,13 +83,13 @@
 	--sidebar-primary-foreground: #ffffff;
 	--sidebar-accent: #e5ded0;
 	--sidebar-accent-foreground: #181b19;
-	--sidebar-border: transparent;
+	--sidebar-border: #d5ddd6;
 	--sidebar-ring: #19382e;
 }
 
 @layer base {
 	* {
-		@apply border-transparent outline-none;
+		@apply border-border outline-ring/50;
 	}
 	body {
 		@apply text-foreground antialiased selection:bg-primary/10 selection:text-primary;
