@@ -1,4 +1,4 @@
-# 知途 Web
+# 知途 · Waywise Web
 
 Svelte 5 + SvelteKit 静态 SPA，通过官方 `@ai-sdk/svelte` 连接 FastAPI。
 

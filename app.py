@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
             finally:
                 await streams.aclose()
 
-    api = FastAPI(title="国内旅行助手", lifespan=lifespan)
+    api = FastAPI(title="知途 · Waywise", lifespan=lifespan)
     api.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

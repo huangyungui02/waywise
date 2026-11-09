@@ -40,7 +40,7 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
                 base_url=settings.dashscope_base_url,
             ),
         ),
-        name="国内旅行助手",
+        name="知途 · Waywise",
         deps_type=TripStore,
         output_type=[str, ToolOutput(present_trip, name="present_trip")],
         end_strategy="early",

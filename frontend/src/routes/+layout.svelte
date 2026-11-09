@@ -61,7 +61,7 @@
 </script>
 
 <svelte:head
-	><title>知途 · JOURNEY</title><meta
+	><title>知途 · Waywise</title><meta
 		name="description"
 		content="一起规划交通、住宿与每日行程。"
 	/></svelte:head
@@ -71,7 +71,7 @@
 		<a href={resolve('/')} aria-label="知途首页" class="flex items-center gap-3 px-2 py-2"
 			><Compass class="size-8 text-primary" /><span
 				><span class="block font-serif text-lg">知途</span><span
-					class="block text-[9px] tracking-widest text-muted-foreground">JOURNEY</span
+					class="block text-[9px] tracking-widest text-muted-foreground">Waywise</span
 				></span
 			></a
 		>
