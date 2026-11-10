@@ -18,9 +18,10 @@ from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, Functi
 
 from app import create_app as create_backend
 from settings import Settings
-from trip import Trip, TripStore
-from agent import present_trip, present_products
-from test_trip import ITINERARY
+from models.arrangements import TravelArrangements
+from storage.travel import TravelStore
+from agent import present_arrangements, present_products
+from test_arrangements import ITINERARY
 
 search_replies: dict[str, anyio.Event] = {}
 
@@ -85,8 +86,10 @@ async def stream(messages, info):
                 search_replies.pop(str(prompt), None)
             yield {
                 4: DeltaToolCall(
-                    name="present_trip",
-                    json_args=Trip.model_validate(ITINERARY).model_dump_json(),
+                    name="present_arrangements",
+                    json_args=TravelArrangements.model_validate(
+                        ITINERARY
+                    ).model_dump_json(),
                     tool_call_id="search-proposal",
                 )
             }
@@ -104,12 +107,12 @@ async def stream(messages, info):
             yield "接下来一起确定出发日期。"
             return
         if str(prompt) in ("展示方案", "换酒店"):
-            plan = Trip.model_validate(ITINERARY)
+            plan = TravelArrangements.model_validate(ITINERARY)
             if prompt == "换酒店":
                 plan.stays[0].hotel = "新的测试酒店"
             yield {
                 0: DeltaToolCall(
-                    name="present_trip",
+                    name="present_arrangements",
                     json_args=plan.model_dump_json(),
                     tool_call_id="proposal-new"
                     if prompt == "换酒店"
@@ -120,7 +123,9 @@ async def stream(messages, info):
         if prompt == "确认方案":
             yield {
                 0: DeltaToolCall(
-                    name="confirm_trip", json_args="{}", tool_call_id="confirm-test"
+                    name="confirm_arrangements",
+                    json_args="{}",
+                    tool_call_id="confirm-test",
                 )
             }
             return
@@ -152,8 +157,8 @@ async def stream(messages, info):
 
 agent = Agent(
     FunctionModel(stream_function=stream),
-    deps_type=TripStore,
-    output_type=[str, ToolOutput(present_trip, name="present_trip")],
+    deps_type=TravelStore,
+    output_type=[str, ToolOutput(present_arrangements, name="present_arrangements")],
     end_strategy="early",
 )
 
@@ -162,10 +167,14 @@ agent.tool(present_products)
 
 
 @agent.tool
-def confirm_trip(ctx: RunContext[TripStore]) -> dict:
+def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
     """浏览器测试的确认入口；使用真实 SQLite 确认逻辑。"""
     assert ctx.conversation_id is not None
-    return {"trip": ctx.deps.confirm(ctx.conversation_id).model_dump(mode="json")}
+    return {
+        "arrangements": ctx.deps.arrangements.confirm(ctx.conversation_id).model_dump(
+            mode="json"
+        )
+    }
 
 
 @agent.tool_plain

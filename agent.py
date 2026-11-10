@@ -15,13 +15,15 @@ from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Skills
 from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
+from models.products import Product
+from models.arrangements import TravelArrangements
 from settings import ROOT, Settings
-from products import Product
-from trip import Trip, TripStore
+from storage.travel import TravelStore
 
 
 def present_products(
-    ctx: RunContext[TripStore], products: Annotated[list[Product], Field(min_length=1)]
+    ctx: RunContext[TravelStore],
+    products: Annotated[list[Product], Field(min_length=1)],
 ) -> list[Product]:
     """在当前叙述位置展示已查到的酒店、门票、大巴等商品，并保存到本次旅行的备选清单；火车票和机票用文字展示。
 
@@ -35,21 +37,25 @@ def present_products(
     return products
 
 
-def present_trip(ctx: RunContext[TripStore], trip: Trip) -> Trip:
+def present_arrangements(
+    ctx: RunContext[TravelStore], arrangements: TravelArrangements
+) -> TravelArrangements:
     """提交选定的完整往返交通和住宿，以卡片展示并结束本轮，等待用户确认。
 
     提交前核实往返方向、酒店位置和全部日期，未购买的商品必须有真实预订链接。
     预计抵达时间需有依据并提前向用户说明；购买状态以用户陈述为准。
     校验失败时修正方案后重新提交，成功后等待用户确认或提出修改。
     """
-    if issues := trip.issues():
+    if issues := arrangements.issues():
         raise ModelRetry("；".join(issues))
     assert ctx.conversation_id is not None and ctx.tool_call_id is not None
-    ctx.deps.present(ctx.conversation_id, trip, ctx.tool_call_id)
-    return trip
+    ctx.deps.arrangements.present(ctx.conversation_id, arrangements, ctx.tool_call_id)
+    return arrangements
 
 
-def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Trip]:
+def create_agent(
+    settings: Settings | None = None,
+) -> Agent[TravelStore, str | TravelArrangements]:
     settings = settings or Settings()
     agent = Agent(
         OpenAIResponsesModel(
@@ -60,8 +66,11 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
             ),
         ),
         name="知途 · Waywise",
-        deps_type=TripStore,
-        output_type=[str, ToolOutput(present_trip, name="present_trip")],
+        deps_type=TravelStore,
+        output_type=[
+            str,
+            ToolOutput(present_arrangements, name="present_arrangements"),
+        ],
         end_strategy="early",
         model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
@@ -163,21 +172,21 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
         return f"当前北京时间：{datetime.now(ZoneInfo('Asia/Shanghai')):%Y-%m-%d %A %H:%M}。"
 
     @agent.tool
-    def confirm_trip(ctx: RunContext[TripStore]) -> dict:
+    def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
         """用户明确同意当前展示的方案后，确认并保存交通和住宿，再继续每日规划。
 
         自动读取当前会话的待确认方案，无需重新填写旅行数据。
-        用户提出修改时先查询并用 present_trip 提交新方案，等待重新确认。
+        用户提出修改时先查询并用 present_arrangements 提交新方案，等待重新确认。
         """
         assert ctx.conversation_id is not None
         try:
-            trip = ctx.deps.confirm(ctx.conversation_id)
+            arrangements = ctx.deps.arrangements.confirm(ctx.conversation_id)
         except ValueError as error:
             return {"success": False, "issues": [str(error)]}
         return {
             "success": True,
             "message": "交通和住宿已确认，可以开始每日行程规划。",
-            "trip": trip.model_dump(mode="json"),
+            "arrangements": arrangements.model_dump(mode="json"),
         }
 
     return agent

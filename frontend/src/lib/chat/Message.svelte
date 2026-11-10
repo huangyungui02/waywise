@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { isToolUIPart, type UIMessage } from 'ai';
-	import type { Detail, Trip } from '#lib/api.js';
+	import type { Detail, TravelArrangements } from '#lib/api.js';
 	import ToolActivity from './ToolActivity.svelte';
 	import Markdown from './Markdown.svelte';
-	import TripCard from './TripCard.svelte';
+	import ArrangementsCard from './ArrangementsCard.svelte';
 	import ProductCard, { type Product } from './ProductCard.svelte';
 	let {
 		message,
@@ -15,7 +15,7 @@
 	type Tool = Extract<UIMessage['parts'][number], { toolCallId: string }>;
 	type Group =
 		| { key: string; type: 'text'; text: string }
-		| { key: string; type: 'proposal'; trip: Trip; id: string }
+		| { key: string; type: 'proposal'; arrangements: TravelArrangements; id: string }
 		| { key: string; type: 'products'; products: Product[] }
 		| { key: string; type: 'tools'; tools: Tool[] };
 	let groups = $derived.by(() => {
@@ -24,13 +24,13 @@
 			if (part.type === 'text') result.push({ key: `text-${i}`, type: 'text', text: part.text });
 			else if (isToolUIPart(part)) {
 				const name = part.type === 'dynamic-tool' ? part.toolName : part.type.slice(5);
-				if (name === 'present_trip' && part.state === 'output-available') {
-					const input = part.input as Trip | { trip: Trip };
+				if (name === 'present_arrangements' && part.state === 'output-available') {
+					const input = part.input as TravelArrangements | { arrangements: TravelArrangements };
 					result.push({
 						key: part.toolCallId,
 						type: 'proposal',
 						id: part.toolCallId,
-						trip: 'trip' in input ? input.trip : input
+						arrangements: 'arrangements' in input ? input.arrangements : input
 					});
 				} else if (name === 'present_products' && part.state === 'output-available') {
 					result.push({
@@ -68,8 +68,8 @@
 				{#if group.type === 'text'}<Markdown text={group.text} />
 				{:else if group.type === 'proposal'}
 					<section aria-label="交通与住宿方案" class="rounded-xl bg-card/70 p-4 shadow-xs">
-						<TripCard
-							trip={group.trip}
+						<ArrangementsCard
+							arrangements={group.arrangements}
 							status={detail.pending_id === group.id
 								? 'pending'
 								: detail.confirmed_id === group.id

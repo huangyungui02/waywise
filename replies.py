@@ -22,8 +22,6 @@ from pydantic_ai.ui.vercel_ai.response_types import (
     ErrorChunk,
 )
 from pydantic_ai.usage import UsageLimits
-from pydantic_ai_harness import StepPersistence
-from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import (
     ConversationSummary,
     SqliteConversationStore,
@@ -33,7 +31,8 @@ from redis_fastapi import StreamBackend, StreamWriter
 from redis_fastapi.config import get_settings as redis_settings
 from redis_fastapi.exceptions import StreamNotFound
 
-from trip import Trip, TripStore
+from models.arrangements import TravelArrangements
+from storage.travel import TravelStore
 
 
 class RecordedChunk(BaseChunk):
@@ -44,7 +43,7 @@ class RecordedChunk(BaseChunk):
 
 
 async def stream_response(
-    adapter: VercelAIAdapter[TripStore, str | Trip],
+    adapter: VercelAIAdapter[TravelStore, str | TravelArrangements],
     streams: StreamBackend,
     conversation_id: str,
     run_id: str,
@@ -73,7 +72,7 @@ async def stream_response(
 
 @dataclass
 class RunningReply:
-    adapter: VercelAIAdapter[TripStore, str | Trip]
+    adapter: VercelAIAdapter[TravelStore, str | TravelArrangements]
     run_id: str = field(default_factory=lambda: str(uuid4()))
     cursor: str = "0-0"
     cancellation: CancellationToken = field(default_factory=CancellationToken)
@@ -83,10 +82,9 @@ class RunningReply:
 
 @dataclass
 class Replies:
-    agent: Agent[TripStore, str | Trip]
+    agent: Agent[TravelStore, str | TravelArrangements]
     conversations: SqliteConversationStore
-    steps: SqliteStepStore
-    trips: TripStore
+    travel: TravelStore
     redis: Redis
     streams: StreamBackend
     max_concurrent_runs: int
@@ -101,17 +99,9 @@ class Replies:
         for summary in summaries:
             if summary.outcome == "running":
                 saved = await self.conversations.get(conversation_id=summary.id)
-                runs = await self.steps.list_runs(conversation_id=summary.id)
-                snapshot = (
-                    await self.steps.latest_snapshot(
-                        run_id=max(runs, key=lambda r: r.started_at).run_id
-                    )
-                    if runs
-                    else None
-                )
                 await self.conversations.save(
                     summary=replace(summary, outcome="cancelled"),
-                    messages=snapshot.messages if snapshot else saved.messages,
+                    messages=saved.messages,
                 )
 
     @staticmethod
@@ -251,9 +241,8 @@ class Replies:
                 message_history=history,
                 conversation_id=summary.id,
                 run_id=reply.run_id,
-                deps=self.trips,
+                deps=self.travel,
                 usage_limits=UsageLimits(request_limit=None),
-                capabilities=[StepPersistence(store=self.steps)],
                 cancellation_token=reply.cancellation,
                 on_complete=completed,
                 on_cancel=cancelled,
@@ -269,13 +258,12 @@ class Replies:
             with anyio.CancelScope(shield=True):
                 try:
                     if not persisted:
-                        snapshot = await self.steps.latest_snapshot(run_id=reply.run_id)
                         await self.conversations.save(
                             summary=replace(
                                 summary,
                                 outcome="cancelled" if interrupted else "failed",
                             ),
-                            messages=snapshot.messages if snapshot else messages,
+                            messages=messages,
                         )
                 finally:
                     self.running.pop(summary.id, None)

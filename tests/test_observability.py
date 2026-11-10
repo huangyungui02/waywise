@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 
 import app
 from settings import Settings
-from trip import TripStore
+from storage.travel import TravelStore
 
 
 @pytest.mark.parametrize("include_content", [False, True])
@@ -52,7 +52,7 @@ def test_request_agent_tool_trace_and_content(
             lambda messages, info: ModelResponse(parts=[TextPart("测试旅行")]),
             stream_function=stream,
         ),
-        deps_type=TripStore,
+        deps_type=TravelStore,
     )
 
     @agent.tool_plain
@@ -138,7 +138,7 @@ def test_no_token_does_not_configure_logfire(app_factory, monkeypatch, tmp_path)
         database_path=tmp_path / "travel.db",
     )
     with TestClient(
-        app_factory(settings, Agent("test", deps_type=TripStore))
+        app_factory(settings, Agent("test", deps_type=TravelStore))
     ) as client:
         assert client.get("/api/health").status_code == 200
 

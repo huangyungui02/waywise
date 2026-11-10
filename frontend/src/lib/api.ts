@@ -29,7 +29,7 @@ interface Stay {
 	purchase_url: string | null;
 	booked: boolean;
 }
-export interface Trip {
+export interface TravelArrangements {
 	origin: string;
 	destination: string;
 	outbound: Transport;
@@ -46,8 +46,8 @@ export interface Detail {
 	recovery: Recovery | null;
 	summary: Conversation;
 	messages: UIMessage[];
-	trip: Trip | null;
-	pending_trip: Trip | null;
+	arrangements: TravelArrangements | null;
+	pending_arrangements: TravelArrangements | null;
 	pending_id: string | null;
 	confirmed_id: string | null;
 }

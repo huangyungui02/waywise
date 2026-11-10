@@ -5,9 +5,9 @@
 	let count = $derived(tools.length);
 	const names: Record<string, string> = {
 		current_time: '核对北京时间',
-		present_trip: '整理交通和住宿方案',
+		present_arrangements: '整理交通和住宿方案',
 		present_products: '展示推荐商品',
-		confirm_trip: '检查并保存交通和住宿',
+		confirm_arrangements: '检查并保存交通和住宿',
 		load_capability: '准备旅行查询',
 		read_file: '查阅旅行查询说明',
 		call_flyai: '查询交通与酒店',

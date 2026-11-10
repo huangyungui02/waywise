@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
-	import type { Trip } from '#lib/api.js';
+	import type { TravelArrangements } from '#lib/api.js';
 	let {
-		trip,
+		arrangements,
 		status,
 		disabled = false,
 		onconfirm
 	}: {
-		trip: Trip;
+		arrangements: TravelArrangements;
 		status: 'pending' | 'confirmed' | 'outdated';
 		disabled?: boolean;
 		onconfirm?: () => void;
@@ -23,9 +23,9 @@
 		>
 	</div>
 	<p class="text-xs text-muted-foreground">
-		{trip.origin} → {trip.destination}。如需调整，在聊天中告诉我即可重新确认。
+		{arrangements.origin} → {arrangements.destination}。如需调整，在聊天中告诉我即可重新确认。
 	</p>
-	{#each [{ label: '去程', leg: trip.outbound }, { label: '回程', leg: trip.inbound }] as { label, leg } (label)}
+	{#each [{ label: '去程', leg: arrangements.outbound }, { label: '回程', leg: arrangements.inbound }] as { label, leg } (label)}
 		<div class="flex flex-col gap-3 rounded-xl bg-card/70 p-4 shadow-xs">
 			<div class="flex justify-between text-xs">
 				<span
@@ -55,7 +55,7 @@
 				>{/if}
 		</div>
 	{/each}
-	{#each trip.stays as stay (`${stay.hotel}-${stay.check_in}`)}
+	{#each arrangements.stays as stay (`${stay.hotel}-${stay.check_in}`)}
 		<div class="flex flex-col gap-2 rounded-xl bg-card/70 p-4 shadow-xs">
 			<h4 class="font-serif text-sm">{stay.hotel}</h4>
 			<p class="text-xs text-muted-foreground">{stay.address}</p>

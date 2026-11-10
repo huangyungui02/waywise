@@ -12,7 +12,7 @@
 	import ChatViewport from './ChatViewport.svelte';
 	import Composer from './Composer.svelte';
 	import TravelForm from './TravelForm.svelte';
-	import TripCard from './TripCard.svelte';
+	import ArrangementsCard from './ArrangementsCard.svelte';
 	import ProductList from './ProductList.svelte';
 	import { travelPrompt } from './travel-brief';
 	let { loaded }: { loaded: LoadedConversation } = $props();
@@ -110,11 +110,11 @@
 				busy={running || confirming}
 				onconfirm={confirm}
 			/>{/each}
-		{#if conversation.detail.trip && !conversation.detail.confirmed_id}<section
+		{#if conversation.detail.arrangements && !conversation.detail.confirmed_id}<section
 				aria-label="交通与住宿方案"
 				class="rounded-xl bg-card/70 p-4 shadow-xs"
 			>
-				<TripCard trip={conversation.detail.trip} status="confirmed" />
+				<ArrangementsCard arrangements={conversation.detail.arrangements} status="confirmed" />
 			</section>{/if}
 		{#if thinking}<p role="status" class="flex items-center gap-2 text-xs text-muted-foreground">
 				<LoaderCircle class="size-3 animate-spin" />正在思考…

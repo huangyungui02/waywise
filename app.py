@@ -14,7 +14,6 @@ from pydantic import BaseModel, StringConstraints
 from pydantic_ai import Agent
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
-from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import (
     ConversationSummary,
     SqliteConversationStore,
@@ -26,9 +25,10 @@ from redis_fastapi.exceptions import StreamError
 from redis_fastapi.streams import check_stream_settings, stream_error_handler
 
 from agent import create_agent
+from models.arrangements import TravelArrangements
 from replies import Replies, stream_response
 from settings import ROOT, Settings
-from trip import Trip, TripStore
+from storage.travel import TravelStore
 
 
 class ConversationTitle(BaseModel):
@@ -42,8 +42,7 @@ def create_app() -> FastAPI:
     database = settings.database_path
     database.parent.mkdir(parents=True, exist_ok=True)
     conversations = SqliteConversationStore(database=database)
-    steps = SqliteStepStore(database=database)
-    trips = TripStore(database=database)
+    travel = TravelStore(database=database)
     redis = Redis.from_url(
         settings.redis_url.get_secret_value(),
         decode_responses=True,
@@ -57,8 +56,7 @@ def create_app() -> FastAPI:
     replies = Replies(
         agent=agent,
         conversations=conversations,
-        steps=steps,
-        trips=trips,
+        travel=travel,
         redis=redis,
         streams=streams,
         max_concurrent_runs=settings.max_concurrent_runs,
@@ -141,11 +139,13 @@ def create_app() -> FastAPI:
         if reply := replies.running.get(conversation_id):
             await reply.ready.wait()
         saved = await load(conversation_id)
-        state = await anyio.to_thread.run_sync(trips.get_state, conversation_id)
+        state = await anyio.to_thread.run_sync(
+            travel.arrangements.get_state, conversation_id
+        )
         checkpoint = await replies.recovery(conversation_id)
         return {
             "products": await anyio.to_thread.run_sync(
-                trips.products.listing, conversation_id
+                travel.products.listing, conversation_id
             ),
             "recovery": checkpoint,
             "summary": asdict(saved.summary),
@@ -154,7 +154,9 @@ def create_app() -> FastAPI:
                 for m in VercelAIAdapter.dump_messages(saved.messages, sdk_version=6)
             ],
             **{
-                key: value.model_dump(mode="json") if isinstance(value, Trip) else value
+                key: value.model_dump(mode="json")
+                if isinstance(value, TravelArrangements)
+                else value
                 for key, value in state.items()
             },
         }
@@ -165,7 +167,7 @@ def create_app() -> FastAPI:
     async def remove_product(conversation_id: str, product_id: str):
         await load(conversation_id)
         if not await anyio.to_thread.run_sync(
-            trips.products.remove, conversation_id, product_id
+            travel.products.remove, conversation_id, product_id
         ):
             raise HTTPException(404, "备选商品不存在")
 
@@ -176,14 +178,14 @@ def create_app() -> FastAPI:
             raise HTTPException(409, "请等待当前回复结束后确认")
         replies.busy.add(conversation_id)
         try:
-            trip = await anyio.to_thread.run_sync(
-                trips.confirm, conversation_id, proposal_id
+            arrangements = await anyio.to_thread.run_sync(
+                travel.arrangements.confirm, conversation_id, proposal_id
             )
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
         finally:
             replies.busy.discard(conversation_id)
-        return trip.model_dump(mode="json")
+        return arrangements.model_dump(mode="json")
 
     @api.delete("/api/conversations/{conversation_id}", status_code=204)
     async def delete_conversation(conversation_id: str):
@@ -193,7 +195,7 @@ def create_app() -> FastAPI:
         replies.busy.add(conversation_id)
         try:
             await conversations.delete(source=saved.summary)
-            await anyio.to_thread.run_sync(trips.delete, conversation_id)
+            await anyio.to_thread.run_sync(travel.delete_conversation, conversation_id)
             await redis.delete(replies.recovery_key(conversation_id))
         finally:
             replies.busy.discard(conversation_id)

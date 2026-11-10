@@ -37,8 +37,8 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 		summary,
 		messages: [...base, { id: 'current-run', role: 'assistant', parts: [{ type: 'text', text }] }],
 		recovery: { run_id: 'current-run', cursor: '1002-0', messages: base },
-		trip: null,
-		pending_trip: null,
+		arrangements: null,
+		pending_arrangements: null,
 		pending_id: null,
 		confirmed_id: null
 	};
@@ -120,8 +120,8 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(80);
 	// 观察实际重放期间的主线程长任务，不依赖生产代码的计数或测试开关。
 	summary.outcome = 'completed';
-	const synchronized = page.waitForResponse((response) =>
-		new URL(response.url()).pathname === '/api/conversations/long-chat'
+	const synchronized = page.waitForResponse(
+		(response) => new URL(response.url()).pathname === '/api/conversations/long-chat'
 	);
 	await page.evaluate(() => {
 		const tasks: number[] = [];

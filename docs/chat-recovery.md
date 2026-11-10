@@ -16,7 +16,7 @@ PydanticAI 负责执行和正式历史，`VercelAIAdapter` 产生官方 AI SDK v
 
 SDK 原生 `REDIS_STREAM_MAX_RUN` 默认 3600 秒，最多 86400 秒；`REDIS_STREAM_DONE_TTL` 默认 120 秒，结束只能缩短寿命，不能超过运行剩余时间。它们由 SDK 的 Pydantic Settings 读取，无需再维护一份应用配置。流不裁剪。到期后正式消息仍在 SQLite，但临时协议事件不再可重放。
 
-停止通过 PydanticAI CancellationToken 协作取消，使官方适配器保存已生成的部分消息；接口等待 SDK 持有的任务完成。服务关闭由 SDK 取消任务，应用保存官方步骤快照。启动时将 SQLite 遗留的 running 状态收尾为 cancelled；没有自动续跑模型或工具。当前仍要求单后端进程，因为会话互斥与取消令牌保存在进程中。
+停止通过 PydanticAI CancellationToken 协作取消，使官方适配器保存已生成的部分消息；接口等待 SDK 持有的任务完成。服务关闭由 SDK 取消任务，应用保留本轮开始时保存的历史和用户输入，不保存未提交的中间步骤。执行异常时也使用这份历史收尾；正常完成和主动停止仍通过官方适配器回调保存消息。启动时将 SQLite 遗留的 running 状态收尾为 cancelled；没有自动续跑模型或工具。当前仍要求单后端进程，因为会话互斥与取消令牌保存在进程中。
 
 ## 浏览器
 

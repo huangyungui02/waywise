@@ -147,7 +147,7 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 - 价格、余票、房态和退改规则以预订页面为准，售票期外可能无法查询。
 - 关闭页面、刷新或切换会话后，只要后端服务仍在运行，回复会继续生成；返回会话可查看最新输出并接收后续内容。点击“停止”才会取消生成，并保存已生成的部分回复。
 - 浏览器使用 IndexedDB 缓存已读取的消息以便快速预览；同步期间会显示提示，最终内容以服务端为准。清空浏览器缓存不会删除服务端历史。
-- 后台运行使用单个后端进程，默认最多同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整。服务重启会中断未完成的回复，保留已保存的消息和完整步骤，不会自动重跑工具；请勿配置多个后端 worker 或实例共享该数据库。
+- 后台运行使用单个后端进程，默认最多同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整。服务重启会中断未完成的回复，保留已保存的会话消息和行程，本轮未提交的中间消息可能丢失，不会自动重跑工具；请勿配置多个后端 worker 或实例共享该数据库。
 - 尚未提供用户登录和多用户数据隔离，适合本地个人使用。
 - Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
@@ -167,8 +167,8 @@ corepack enable
 pnpm --dir frontend install --frozen-lockfile
 ```
 
-后端模块保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
-`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`trip.py` 定义和保存行程。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
+后端入口保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
+`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`models/` 定义业务模型与校验，`storage/` 定义 SQLAlchemy 表和读写操作，`TravelStore` 统一持有并列的交通住宿安排与商品存储。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
 官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
 
 先确保本地 Redis 在 `localhost:6379` 运行；也可以只启动 Compose 中的 Redis：

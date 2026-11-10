@@ -312,8 +312,8 @@ test('历史方案卡片兼容包装格式的工具参数', async ({ page }) => 
 		detail.recovery = null;
 		for (const message of detail.messages) {
 			for (const part of message.parts) {
-				if (part.type === 'tool-present_trip' || part.toolName === 'present_trip') {
-					part.input = { trip: part.input };
+				if (part.type === 'tool-present_arrangements' || part.toolName === 'present_arrangements') {
+					part.input = { arrangements: part.input };
 				}
 			}
 		}

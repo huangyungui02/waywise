@@ -6,18 +6,18 @@ from dataclasses import replace
 
 import pytest
 from pydantic_ai.direct import model_request
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart
 from pydantic_ai.messages import UserPromptPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
-from pydantic_ai_harness.step_persistence import SqliteStepStore
 from pydantic_ai_harness.step_persistence.conversations import SqliteConversationStore
 from starlette.testclient import TestClient
 from test_app import configured  # noqa: F401
-from test_trip import itinerary  # noqa: F401
+from test_arrangements import itinerary  # noqa: F401
 
 import agent as agent_module
 from settings import Settings
-from trip import Trip, TripStore
+from models.arrangements import TravelArrangements
+from storage.travel import TravelStore
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -132,20 +132,8 @@ def test_history_restart_and_server_owned_context(app_factory, configured, tmp_p
             assert client.delete(f"/api/conversations/{cid}").status_code == 204
             assert client.get(f"/api/conversations/{cid}").status_code == 404
 
-    async def snapshots():
-        assert (
-            len(
-                await SqliteStepStore(database=settings.database_path).list_runs(
-                    conversation_id=cid
-                )
-            )
-            == 0
-        )
 
-    asyncio.run(snapshots())
-
-
-def test_confirmed_trip_persists_and_deletes(
+def test_confirmed_arrangements_persists_and_deletes(
     app_factory, configured, tmp_path, itinerary
 ):
     settings = Settings(database_path=tmp_path / "travel.db")
@@ -160,7 +148,7 @@ def test_confirmed_trip_persists_and_deletes(
 
             yield {
                 0: DeltaToolCall(
-                    name="present_trip",
+                    name="present_arrangements",
                     json_args=json.dumps(itinerary),
                     tool_call_id="proposal-1",
                 )
@@ -174,10 +162,10 @@ def test_confirmed_trip_persists_and_deletes(
             response = client.post(
                 f"/api/conversations/{cid}/chat", json=request("确认安排")
             )
-            assert "present_trip" in response.text
+            assert "present_arrangements" in response.text
             pending = client.get(f"/api/conversations/{cid}").json()
-            assert pending["trip"] is None
-            assert pending["pending_trip"]["destination"] == "杭州"
+            assert pending["arrangements"] is None
+            assert pending["pending_arrangements"]["destination"] == "杭州"
             assert (
                 client.post(
                     f"/api/conversations/{cid}/proposals/old/confirm"
@@ -201,32 +189,21 @@ def test_confirmed_trip_persists_and_deletes(
             )
             assert "交通住宿已确认" in response.text
             data = client.get(f"/api/conversations/{cid}").json()
-            assert data["trip"]["outbound"]["number"] == "G123"
-            assert "present_trip" in str(data["messages"])
-        assert TripStore(database=settings.database_path).get(
+            assert data["arrangements"]["outbound"]["number"] == "G123"
+            assert "present_arrangements" in str(data["messages"])
+        assert TravelStore(database=settings.database_path).arrangements.get(
             cid
-        ) == Trip.model_validate(itinerary)
+        ) == TravelArrangements.model_validate(itinerary)
 
-        async def check_snapshots():
-            store = SqliteStepStore(database=settings.database_path)
-            runs = await store.list_runs(conversation_id=cid)
-            assert len(runs) == 2
-            assert await store.latest_snapshot(run_id=runs[0].run_id) is not None
-            # 模拟已有 checkpoint、会话最终提交尚未完成时进程退出。
-            conversations = SqliteConversationStore(database=settings.database_path)
-            saved = await conversations.get(conversation_id=cid)
-            await conversations.save(
-                summary=replace(saved.summary, outcome="running"), messages=[]
-            )
-
-        asyncio.run(check_snapshots())
         with TestClient(app_factory(settings, agent)) as client:
             restored = client.get(f"/api/conversations/{cid}").json()
-            assert restored["trip"] == data["trip"]
-            assert restored["summary"]["outcome"] == "cancelled"
+            assert restored["arrangements"] == data["arrangements"]
+            assert restored["summary"]["outcome"] == "completed"
             assert "交通住宿已确认" in str(restored["messages"])
             client.delete(f"/api/conversations/{cid}")
-        assert TripStore(database=settings.database_path).get(cid) is None
+        assert (
+            TravelStore(database=settings.database_path).arrangements.get(cid) is None
+        )
 
 
 def test_failed_run_retains_question_and_marks_interrupted(
@@ -264,15 +241,15 @@ def test_stale_running_session_recovers_after_restart(
         store = SqliteConversationStore(database=settings.database_path)
         saved = await store.get(conversation_id=cid)
         await store.save(
-            summary=replace(saved.summary, outcome="running"), messages=saved.messages
+            summary=replace(saved.summary, outcome="running"),
+            messages=[ModelRequest(parts=[UserPromptPart("查询杭州")])],
         )
 
     asyncio.run(mark_running())
     with TestClient(app_factory(settings)) as client:
-        assert (
-            client.get(f"/api/conversations/{cid}").json()["summary"]["outcome"]
-            == "cancelled"
-        )
+        detail = client.get(f"/api/conversations/{cid}").json()
+        assert detail["summary"]["outcome"] == "cancelled"
+        assert "查询杭州" in str(detail["messages"])
         assert (
             client.post(f"/api/conversations/{cid}/chat", json=request("")).status_code
             == 422

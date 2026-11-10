@@ -410,10 +410,10 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
         "call_flyai",
         "amap_route",
         "current_time",
-        "confirm_trip",
-        "present_trip",
+        "confirm_arrangements",
+        "present_arrangements",
     }
-    assert "confirmed_trip" not in {t.get("name") for t in body["tools"]}
+    assert "confirmed_arrangements" not in {t.get("name") for t in body["tools"]}
     assert "x-anthropic-billing-header" not in str(body)
 
 
@@ -496,7 +496,7 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
     ],
 )
 def test_present_products_continues_conversation(configured, invalid, tmp_path):
-    from products import Product
+    from models.products import Product
 
     requests = 0
     product = {
@@ -528,9 +528,9 @@ def test_present_products_continues_conversation(configured, invalid, tmp_path):
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        from trip import TripStore
+        from storage.travel import TravelStore
 
-        store = TripStore(tmp_path / "products.db")
+        store = TravelStore(tmp_path / "products.db")
         assert (
             agent.run_sync(
                 "推荐酒店", deps=store, conversation_id="products-test"

@@ -9,7 +9,9 @@ from pydantic_ai.models.function import FunctionModel
 from test_app import configured  # noqa: F401
 
 import agent as agent_module
-from trip import Trip, TripStore
+from models.arrangements import TravelArrangements
+from models.products import Product
+from storage.travel import TravelStore
 
 
 ITINERARY = {
@@ -54,12 +56,12 @@ def itinerary():
     return deepcopy(ITINERARY)
 
 
-def test_valid_trip_and_day_trip(itinerary):
-    assert Trip.model_validate(itinerary).issues() == []
+def test_valid_arrangements_and_same_day_return(itinerary):
+    assert TravelArrangements.model_validate(itinerary).issues() == []
     itinerary["inbound"]["departure_time"] = "2026-12-04T18:00:00"
     itinerary["inbound"]["arrival_time"] = "2026-12-04T19:00:00"
     itinerary["stays"] = []
-    assert Trip.model_validate(itinerary).issues() == []
+    assert TravelArrangements.model_validate(itinerary).issues() == []
 
 
 @pytest.mark.parametrize(
@@ -77,21 +79,21 @@ def test_valid_trip_and_day_trip(itinerary):
         (lambda t: t["stays"][0].update(booked=False), "购买链接"),
     ],
 )
-def test_invalid_trip(itinerary, change, expected):
+def test_invalid_arrangements(itinerary, change, expected):
     change(itinerary)
-    assert expected in " ".join(Trip.model_validate(itinerary).issues())
+    assert expected in " ".join(TravelArrangements.model_validate(itinerary).issues())
 
 
 def test_transport_schema(itinerary):
     itinerary["outbound"]["type"] = "car"
     with pytest.raises(ValidationError):
-        Trip.model_validate(itinerary)
+        TravelArrangements.model_validate(itinerary)
 
 
 def test_proposal_ends_run_and_confirmation_uses_pending(
     configured, itinerary, tmp_path
 ):
-    store = TripStore(database=tmp_path / "travel.db")
+    store = TravelStore(database=tmp_path / "travel.db")
     agent = agent_module.create_agent()
     calls = 0
 
@@ -100,34 +102,36 @@ def test_proposal_ends_run_and_confirmation_uses_pending(
         calls += 1
         return ModelResponse(
             parts=[
-                ToolCallPart("present_trip", itinerary, tool_call_id="proposal-1"),
-                ToolCallPart("confirm_trip", {}),
+                ToolCallPart(
+                    "present_arrangements", itinerary, tool_call_id="proposal-1"
+                ),
+                ToolCallPart("confirm_arrangements", {}),
             ]
         )
 
     with agent.override(model=FunctionModel(propose)):
         result = agent.run_sync("选好了", deps=store, conversation_id="chat-a")
     assert calls == 1
-    assert result.output == Trip.model_validate(itinerary)
-    assert store.get("chat-a") is None
-    assert store.get_state("chat-a")["pending_id"] == "proposal-1"
-    assert store.get_state("chat-b")["pending_trip"] is None
+    assert result.output == TravelArrangements.model_validate(itinerary)
+    assert store.arrangements.get("chat-a") is None
+    assert store.arrangements.get_state("chat-a")["pending_id"] == "proposal-1"
+    assert store.arrangements.get_state("chat-b")["pending_arrangements"] is None
 
     def confirm(messages, info):
         if messages[-1].parts[0].part_kind == "tool-return":
             return ModelResponse(parts=[TextPart("开始每日规划")])
-        return ModelResponse(parts=[ToolCallPart("confirm_trip", {})])
+        return ModelResponse(parts=[ToolCallPart("confirm_arrangements", {})])
 
     with agent.override(model=FunctionModel(confirm)):
         agent.run_sync("确认", deps=store, conversation_id="chat-a")
         missing = agent.run_sync("确认", deps=store, conversation_id="chat-b")
-    assert store.get("chat-a") == result.output
-    assert store.get_state("chat-a")["pending_trip"] is None
+    assert store.arrangements.get("chat-a") == result.output
+    assert store.arrangements.get_state("chat-a")["pending_arrangements"] is None
     assert "没有待确认方案" in str(missing.all_messages())
 
 
 def test_invalid_proposal_retries_without_saving(configured, itinerary, tmp_path):
-    store = TripStore(database=tmp_path / "travel.db")
+    store = TravelStore(database=tmp_path / "travel.db")
     itinerary["stays"] = []
     calls = 0
 
@@ -135,14 +139,16 @@ def test_invalid_proposal_retries_without_saving(configured, itinerary, tmp_path
         nonlocal calls
         calls += 1
         if calls == 1:
-            return ModelResponse(parts=[ToolCallPart("present_trip", itinerary)])
+            return ModelResponse(
+                parts=[ToolCallPart("present_arrangements", itinerary)]
+            )
         assert "住宿缺失" in str(messages[-1])
         return ModelResponse(parts=[TextPart("需要补齐住宿")])
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
         agent.run_sync("展示方案", deps=store, conversation_id="chat-a")
-    assert store.get_state("chat-a")["pending_trip"] is None
+    assert store.arrangements.get_state("chat-a")["pending_arrangements"] is None
 
 
 def test_time_is_a_tool(configured):
@@ -190,42 +196,67 @@ def test_bus_to_scenic_destination(itinerary):
         arrival_point="成都东站",
     )
     itinerary["stays"][0].update(city="小金县", address="四姑娘山镇")
-    trip = Trip.model_validate(itinerary)
-    assert trip.issues() == []
-    assert trip.outbound.number is None
+    arrangements = TravelArrangements.model_validate(itinerary)
+    assert arrangements.issues() == []
+    assert arrangements.outbound.number is None
     del itinerary["outbound"]["departure_time"]
     with pytest.raises(ValidationError):
-        Trip.model_validate(itinerary)
+        TravelArrangements.model_validate(itinerary)
 
 
-def test_trip_store_save_update_isolation_and_delete(tmp_path, itinerary):
+def test_arrangements_store_save_update_isolation_and_delete(tmp_path, itinerary):
     database = tmp_path / "旅行?#.db"
-    store = TripStore(database=database)
-    trip = Trip.model_validate(itinerary)
-    assert store.get("missing") is None
-    store.delete("missing")
-    store.present("chat-a", trip, "a1")
-    store.confirm("chat-a")
-    store.present("chat-b", trip, "b1")
-    store.confirm("chat-b")
-    updated = trip.model_copy(deep=True)
+    store = TravelStore(database=database)
+    arrangements = TravelArrangements.model_validate(itinerary)
+    assert store.arrangements.get("missing") is None
+    store.delete_conversation("missing")
+    store.arrangements.present("chat-a", arrangements, "a1")
+    store.arrangements.confirm("chat-a")
+    store.arrangements.present("chat-b", arrangements, "b1")
+    store.arrangements.confirm("chat-b")
+    updated = arrangements.model_copy(deep=True)
     updated.outbound.purchased = True
     updated.outbound.purchase_url = None
-    store.present("chat-a", updated, "a2")
-    assert store.get("chat-a") == trip
-    store = TripStore(database=database)
-    assert store.get_state("chat-a")["pending_trip"] == updated
+    store.arrangements.present("chat-a", updated, "a2")
+    assert store.arrangements.get("chat-a") == arrangements
+    store = TravelStore(database=database)
+    assert store.arrangements.get_state("chat-a")["pending_arrangements"] == updated
     with pytest.raises(ValueError, match="已更新"):
-        store.confirm("chat-a", "a1")
-    store.confirm("chat-a", "a2")
-    assert store.get_state("chat-a")["confirmed_id"] == "a2"
+        store.arrangements.confirm("chat-a", "a1")
+    store.arrangements.confirm("chat-a", "a2")
+    assert store.arrangements.get_state("chat-a")["confirmed_id"] == "a2"
     with pytest.raises(ValueError, match="没有待确认"):
-        store.confirm("chat-a")
-    store = TripStore(database=database)
-    assert store.get("chat-a") == updated
-    assert store.get("chat-b") == trip
-    store.delete("chat-a")
-    store.delete("chat-a")
-    store = TripStore(database=database)
-    assert store.get("chat-a") is None
-    assert store.get("chat-b") == trip
+        store.arrangements.confirm("chat-a")
+    store = TravelStore(database=database)
+    assert store.arrangements.get("chat-a") == updated
+    assert store.arrangements.get("chat-b") == arrangements
+    store.delete_conversation("chat-a")
+    store.delete_conversation("chat-a")
+    store = TravelStore(database=database)
+    assert store.arrangements.get("chat-a") is None
+    assert store.arrangements.get("chat-b") == arrangements
+
+
+def test_delete_conversation_clears_both_stores(tmp_path, itinerary):
+    store = TravelStore(tmp_path / "travel.db")
+    arrangements = TravelArrangements.model_validate(itinerary)
+    product = Product(
+        name="酒店", description="近车站", purchase_url="https://example.com/hotel"
+    )
+    for conversation_id in ("first", "other"):
+        store.arrangements.present(conversation_id, arrangements, "proposal")
+        store.products.save(conversation_id, [product])
+
+    # 单独删除交通住宿安排不影响商品；删除会话才清理两个存储。
+    store.arrangements.delete("first")
+    assert len(store.products.listing("first")) == 1
+    store.arrangements.present("first", arrangements, "replacement")
+    store.delete_conversation("first")
+
+    reopened = TravelStore(tmp_path / "travel.db")
+    assert reopened.arrangements.get_state("first")["pending_arrangements"] is None
+    assert reopened.products.listing("first") == []
+    assert (
+        reopened.arrangements.get_state("other")["pending_arrangements"] == arrangements
+    )
+    assert len(reopened.products.listing("other")) == 1
