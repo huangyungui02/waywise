@@ -103,12 +103,6 @@
 		}}
 	/>
 	<ChatViewport bind:this={viewport}>
-		{#if conversation.recovering && !conversation.chat.error}<p
-				role="status"
-				class="text-xs text-muted-foreground"
-			>
-				正在同步最新进度…
-			</p>{/if}
 		{#if !messages.length}<TravelForm bind:values />{/if}
 		{#each messages as message (message.id)}<Message
 				{message}

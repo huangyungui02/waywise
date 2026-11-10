@@ -684,7 +684,7 @@ test('IndexedDB 先显示完整预览，慢速同步后接续后台结果', asyn
 	});
 	await page.reload();
 	await expect(page.getByText(text, { exact: true })).toBeVisible();
-	await expect(page.getByText('正在同步最新进度…', { exact: true })).toBeVisible();
+	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
 	await page.request.post(`/api/__test/finish-search?prompt=${encodeURIComponent(prompt)}`);
 	release();
 	await expect(page.getByRole('region', { name: '交通与住宿方案' })).toBeVisible();

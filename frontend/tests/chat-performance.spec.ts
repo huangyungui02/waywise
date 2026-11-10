@@ -109,7 +109,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	}, detail);
 	await page.locator('a[href="/chat/long-chat"]').click();
 	await expect(page.getByText(text, { exact: true })).toBeVisible();
-	await expect(page.getByText('正在同步最新进度…', { exact: true })).toBeVisible();
+	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
 	// 第一条事件已抵达；完整预览仍应保留，不退回空白的回复起点。
 	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 150)));
 	await expect(page.getByText(text, { exact: true })).toHaveCount(1);
@@ -129,6 +129,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 		window.dispatchEvent(new Event('test:finish-replay'));
 	});
 	summary.outcome = 'completed';
+	await expect(page.getByRole('button', { name: '停止', exact: true })).toHaveCount(0);
 	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
 	await expect(page.getByText(text, { exact: true })).toHaveCount(1);
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(80);
