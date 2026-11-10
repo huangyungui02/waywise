@@ -94,8 +94,8 @@
 						class={[
 							'block rounded-lg py-2.5 pr-10 pl-3 text-xs transition-colors',
 							page.params.id === conversation.id
-								? 'bg-card shadow-xs'
-								: 'text-muted-foreground hover:bg-card/50'
+								? 'bg-sidebar-accent text-sidebar-accent-foreground'
+								: 'text-muted-foreground hover:bg-sidebar-accent/50'
 						]}
 					>
 						<span class="block truncate leading-5">{conversation.title}</span><span
@@ -128,9 +128,9 @@
 							>
 							<Popover.Close
 								class={buttonVariants({
-									variant: 'destructive',
+									variant: 'ghost',
 									size: 'sm',
-									class: 'w-full justify-start'
+									class: 'w-full justify-start text-destructive hover:text-destructive'
 								})}
 								aria-label={`删除 ${conversation.title}`}
 								onclick={() => (deleting = conversation)}
@@ -145,13 +145,13 @@
 		</nav>
 	</div>
 {/snippet}
-<div
-	class="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)] sm:p-2.5 sm:pt-[max(0.625rem,env(safe-area-inset-top))] md:p-3 md:pt-[max(0.75rem,env(safe-area-inset-top))]"
->
-	<aside class="hidden w-60 shrink-0 md:block">{@render sidebar()}</aside>
-	<div
-		class="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-card/80 shadow-sm"
+<div class="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
+	<aside
+		class="hidden w-60 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:block"
 	>
+		{@render sidebar()}
+	</aside>
+	<div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
 		<header
 			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-4 md:hidden"
 		>
@@ -182,6 +182,7 @@
 		side="left"
 		showCloseButton={false}
 		class="w-64 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+		style="--popover: var(--sidebar); --popover-foreground: var(--sidebar-foreground); --border: var(--sidebar-border)"
 		><Sheet.Header class="sr-only"
 			><Sheet.Title>我的旅行</Sheet.Title><Sheet.Description
 				>新建、切换或删除旅行会话</Sheet.Description
