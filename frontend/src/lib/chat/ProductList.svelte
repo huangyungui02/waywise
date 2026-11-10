@@ -87,27 +87,29 @@
 				>{/if}
 			{#each products as product (product.id)}
 				<section aria-label={product.name}>
-					<ProductCard {product} />
-					<div class="flex items-center justify-between gap-2">
-						<p class="text-xs text-muted-foreground">
-							推荐于 {new Date(product.updated_at).toLocaleString('zh-CN', {
-								month: 'numeric',
-								day: 'numeric',
-								hour: '2-digit',
-								minute: '2-digit'
-							})}
-						</p>
-						<Button
-							variant="ghost"
-							size="sm"
-							aria-label={`移除${product.name}`}
-							disabled={removing !== null}
-							onclick={() => remove(product.id)}
-							><Trash2 data-icon="inline-start" />{removing === product.id
-								? '移除中…'
-								: '移除'}</Button
-						>
-					</div>
+					<ProductCard {product}>
+						{#snippet header()}
+							<div class="flex items-center justify-between gap-2">
+								<p class="text-[11px] text-muted-foreground">
+									推荐于 {new Date(product.updated_at).toLocaleString('zh-CN', {
+										month: 'numeric',
+										day: 'numeric',
+										hour: '2-digit',
+										minute: '2-digit'
+									})}
+								</p>
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									class="text-muted-foreground"
+									title="移除备选"
+									aria-label={`移除${product.name}`}
+									disabled={removing !== null}
+									onclick={() => remove(product.id)}><Trash2 /></Button
+								>
+							</div>
+						{/snippet}
+					</ProductCard>
 				</section>
 			{:else}
 				{#if !loading && !error}<p class="py-12 text-center text-sm text-muted-foreground">

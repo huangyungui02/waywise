@@ -3,14 +3,16 @@
 </script>
 
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Product } from '#lib/api.js';
 	import { ImageOff } from '@lucide/svelte';
 	import * as Card from '#lib/components/ui/card/index.js';
-	let { product }: { product: Product } = $props();
+	let { product, header }: { product: Product; header?: Snippet } = $props();
 	let failedImage = $state<string | null>(null);
 </script>
 
-<Card.Root class="my-2 w-full py-4">
+<Card.Root class="my-2 w-full gap-3 py-4">
+	{#if header}<div class="px-4">{@render header()}</div>{/if}
 	<div
 		class="grid grid-cols-[6rem_minmax(0,1fr)] items-start gap-x-3 gap-y-3 px-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-x-5"
 	>
