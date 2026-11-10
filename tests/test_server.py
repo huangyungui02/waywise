@@ -14,17 +14,17 @@ from starlette.testclient import TestClient
 from test_app import configured  # noqa: F401
 from test_arrangements import itinerary  # noqa: F401
 
-import agent as agent_module
-from settings import Settings
-from models.arrangements import TravelArrangements
-from storage.travel import TravelStore
+from app import agent as agent_module
+from app.settings import Settings
+from app.models.arrangements import TravelArrangements
+from app.db.travel import TravelStore
 
 
 @pytest.mark.parametrize("fails", [False, True])
 def test_first_reply_names_conversation_without_thinking(
     app_factory, configured, monkeypatch, tmp_path, fails
 ):
-    import replies
+    from app import replies
 
     calls = []
 

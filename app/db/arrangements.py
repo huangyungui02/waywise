@@ -3,8 +3,8 @@
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from models.arrangements import TravelArrangements
-from storage.models import ArrangementsRecord
+from app.models.arrangements import TravelArrangements
+from app.db.tables import ArrangementsRecord
 
 
 class ArrangementsStore:

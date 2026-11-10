@@ -4,9 +4,9 @@ from starlette.testclient import TestClient
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
-from models.products import Product
-from settings import Settings
-from storage.travel import TravelStore
+from app.models.products import Product
+from app.settings import Settings
+from app.db.travel import TravelStore
 
 
 def test_products_update_and_reopen(tmp_path):

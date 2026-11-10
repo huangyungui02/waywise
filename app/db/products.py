@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from models.products import Product, SavedProduct
-from storage.models import ProductRecord
+from app.models.products import Product, SavedProduct
+from app.db.tables import ProductRecord
 
 
 class ProductStore:

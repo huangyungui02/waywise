@@ -8,9 +8,9 @@ PydanticAI 负责执行和正式历史，`VercelAIAdapter` 产生官方 AI SDK v
 
 应用在 lifespan 中创建一个 `StreamBackend`，调用 `detect()` 检查能力，并在连接池关闭前调用 `aclose()`。使用显式客户端读取应用的 SecretStr 配置。SDK 的 `open()` 创建运行，`spawn()` 持有后台任务并负责心跳和异常结束，`follow()` 完成历史重放及后续订阅。断开 HTTP 只关闭 reader。
 
-`app.py` 负责应用装配、生命周期和 HTTP 路由；`replies.py` 的 `Replies` 持有运行状态，负责执行、标题生成、正式历史提交和恢复。后台任务仍由 Redis SDK 创建和持有。
+`app/main.py` 负责应用装配和生命周期，`app/routes/` 提供 HTTP 接口，通过 FastAPI 依赖获取应用持有的同一份 `Replies`；`app/replies.py` 的 `Replies` 持有运行状态，负责执行、标题生成、正式历史提交和恢复。后台任务仍由 Redis SDK 创建和持有。
 
-协议桥接也位于 `replies.py`：保存 `chunk.encode(6)`，读取 SDK 事件后交还官方适配器输出；SDK 结束事件转换为官方 DoneChunk，流中断转换为官方 ErrorChunk。每个已应用事件附加 transient `data-progress`，用于触发界面与预览缓存更新。没有自建 Redis 读循环、通知、事务检查点或任务调度器。
+协议桥接也位于 `app/replies.py`：保存 `chunk.encode(6)`，读取 SDK 事件后交还官方适配器输出；SDK 结束事件转换为官方 DoneChunk，流中断转换为官方 ErrorChunk。每个已应用事件附加 transient `data-progress`，用于触发界面与预览缓存更新。没有自建 Redis 读循环、通知、事务检查点或任务调度器。
 
 每个会话还保存一个应用自己的 Redis 键，内容只有当前运行 ID 和本轮开始前的 UI 消息（包括本轮用户输入）。这是会话与流的关联，不保存运行状态、事件或消费游标。读取详情通过 SDK 验证流仍存在；流已过期则只返回正式历史。旧运行由 SDK TTL 清理，删除会话后移除关联键并禁止访问其流。
 

@@ -20,13 +20,13 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_ai.toolsets import FunctionToolset
 from starlette.testclient import TestClient
 
-import agent as agent_module
-from settings import Settings
+from app import agent as agent_module
+from app.settings import Settings
 
 
 @pytest.fixture
 def configured(monkeypatch):
-    import replies
+    from app import replies
     from pydantic_ai.direct import model_request
 
     async def local_title_request(model, messages, **kwargs):
@@ -496,7 +496,7 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
     ],
 )
 def test_present_products_continues_conversation(configured, invalid, tmp_path):
-    from models.products import Product
+    from app.models.products import Product
 
     requests = 0
     product = {
@@ -528,7 +528,7 @@ def test_present_products_continues_conversation(configured, invalid, tmp_path):
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        from storage.travel import TravelStore
+        from app.db.travel import TravelStore
 
         store = TravelStore(tmp_path / "products.db")
         assert (

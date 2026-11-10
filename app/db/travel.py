@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 from sqlalchemy.pool import NullPool
 
-from storage.arrangements import ArrangementsStore
-from storage.models import Base
-from storage.products import ProductStore
+from app.db.arrangements import ArrangementsStore
+from app.db.tables import Base
+from app.db.products import ProductStore
 
 
 class TravelStore:

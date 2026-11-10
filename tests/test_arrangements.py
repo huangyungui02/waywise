@@ -8,10 +8,10 @@ from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from test_app import configured  # noqa: F401
 
-import agent as agent_module
-from models.arrangements import TravelArrangements
-from models.products import Product
-from storage.travel import TravelStore
+from app import agent as agent_module
+from app.models.arrangements import TravelArrangements
+from app.models.products import Product
+from app.db.travel import TravelStore
 
 
 ITINERARY = {

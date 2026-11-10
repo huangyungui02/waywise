@@ -17,10 +17,10 @@ def offline_redis(monkeypatch):
 
     from stream_backend import LocalStreams
 
-    monkeypatch.setattr("app.StreamBackend", LocalStreams)
+    monkeypatch.setattr("app.main.StreamBackend", LocalStreams)
     server = FakeServer()
     monkeypatch.setattr(
-        "app.Redis.from_url",
+        "app.main.Redis.from_url",
         lambda *args, **kwargs: FakeRedis(server=server, decode_responses=True),
     )
     return server
@@ -34,7 +34,7 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def app_factory(monkeypatch):
-    import app
+    from app import main as app
 
     def create(settings=None, agent=None):
         with monkeypatch.context() as patch:

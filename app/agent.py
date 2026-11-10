@@ -3,6 +3,7 @@
 import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 from typing import Annotated
@@ -15,10 +16,10 @@ from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Skills
 from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
-from models.products import Product
-from models.arrangements import TravelArrangements
-from settings import ROOT, Settings
-from storage.travel import TravelStore
+from app.db.travel import TravelStore
+from app.models.arrangements import TravelArrangements
+from app.models.products import Product
+from app.settings import ROOT, Settings
 
 
 def present_products(
@@ -73,7 +74,9 @@ def create_agent(
         ],
         end_strategy="early",
         model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
-        instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
+        instructions=Path(__file__)
+        .with_name("instructions.md")
+        .read_text(encoding="utf-8"),
         capabilities=[
             SummarizingCompaction(
                 max_tokens=settings.compact_max_tokens,

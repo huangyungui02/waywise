@@ -167,8 +167,8 @@ corepack enable
 pnpm --dir frontend install --frozen-lockfile
 ```
 
-后端入口保留在根目录：`agent.py` 定义 Agent 和工具，`app.py` 提供 FastAPI 接口，
-`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`models/` 定义业务模型与校验，`storage/` 定义 SQLAlchemy 表和读写操作，`TravelStore` 统一持有并列的交通住宿安排与商品存储。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
+后端位于 `app/`：`main.py` 负责应用装配，`routes/` 提供 HTTP 接口，`agent.py` 定义 Agent 和工具，
+`replies.py` 管理回复执行和恢复，`settings.py` 管理配置，`models/` 定义业务模型，`db/` 定义数据库表和读写操作。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
 官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
 
 先确保本地 Redis 在 `localhost:6379` 运行；也可以只启动 Compose 中的 Redis：
@@ -180,7 +180,7 @@ docker compose up -d redis
 已有 Redis 可通过 `.env` 中的 `REDIS_URL` 指定地址。然后分别在两个终端启动后端和前端：
 
 ```bash
-uv run uvicorn app:create_app --factory --host 127.0.0.1 --port 7932
+uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 7932
 pnpm --dir frontend dev
 ```
 

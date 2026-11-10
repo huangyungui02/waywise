@@ -31,8 +31,8 @@ from redis_fastapi import StreamBackend, StreamWriter
 from redis_fastapi.config import get_settings as redis_settings
 from redis_fastapi.exceptions import StreamNotFound
 
-from models.arrangements import TravelArrangements
-from storage.travel import TravelStore
+from app.models.arrangements import TravelArrangements
+from app.db.travel import TravelStore
 
 
 class RecordedChunk(BaseChunk):

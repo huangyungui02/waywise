@@ -16,11 +16,11 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
-from app import create_app as create_backend
-from settings import Settings
-from models.arrangements import TravelArrangements
-from storage.travel import TravelStore
-from agent import present_arrangements, present_products
+from app.main import create_app as create_backend
+from app.settings import Settings
+from app.models.arrangements import TravelArrangements
+from app.db.travel import TravelStore
+from app.agent import present_arrangements, present_products
 from test_arrangements import ITINERARY
 
 search_replies: dict[str, anyio.Event] = {}
@@ -212,8 +212,8 @@ def create_app():
         logfire_token="",
     )
     with (
-        patch("app.Settings", return_value=settings),
-        patch("app.create_agent", return_value=agent),
+        patch("app.main.Settings", return_value=settings),
+        patch("app.main.create_agent", return_value=agent),
     ):
         backend = create_backend()
 

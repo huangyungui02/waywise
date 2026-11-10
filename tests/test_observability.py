@@ -11,9 +11,9 @@ from pydantic_ai.messages import ModelResponse, TextPart, ToolReturnPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from starlette.testclient import TestClient
 
-import app
-from settings import Settings
-from storage.travel import TravelStore
+from app import main as app
+from app.settings import Settings
+from app.db.travel import TravelStore
 
 
 @pytest.mark.parametrize("include_content", [False, True])

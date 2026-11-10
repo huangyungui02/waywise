@@ -24,9 +24,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
-COPY agent.py app.py replies.py settings.py instructions.md ./
-COPY models/ ./models/
-COPY storage/ ./storage/
+COPY app/ ./app/
 COPY skills/ ./skills/
 COPY --from=frontend /build/build ./frontend/build
 RUN useradd --create-home traveler \
@@ -36,4 +34,4 @@ USER traveler
 EXPOSE 7932
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7932/api/health', timeout=3)"]
-CMD ["uvicorn", "app:create_app", "--factory", "--host", "0.0.0.0", "--port", "7932", "--workers", "1"]
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "7932", "--workers", "1"]
