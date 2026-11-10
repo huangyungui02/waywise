@@ -42,6 +42,7 @@ export interface Recovery {
 	messages: UIMessage[];
 }
 export interface Detail {
+	products?: SavedProduct[];
 	recovery: Recovery | null;
 	summary: Conversation;
 	messages: UIMessage[];
@@ -49,6 +50,19 @@ export interface Detail {
 	pending_trip: Trip | null;
 	pending_id: string | null;
 	confirmed_id: string | null;
+}
+
+export interface Product {
+	name: string;
+	description: string;
+	purchase_url: string;
+	image_url?: string | null;
+	price?: string | null;
+}
+
+export interface SavedProduct extends Product {
+	id: string;
+	updated_at: string;
 }
 
 export class ApiError extends Error {

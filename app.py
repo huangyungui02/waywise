@@ -144,6 +144,9 @@ def create_app() -> FastAPI:
         state = await anyio.to_thread.run_sync(trips.get_state, conversation_id)
         checkpoint = await replies.recovery(conversation_id)
         return {
+            "products": await anyio.to_thread.run_sync(
+                trips.products.listing, conversation_id
+            ),
             "recovery": checkpoint,
             "summary": asdict(saved.summary),
             "messages": [
@@ -155,6 +158,16 @@ def create_app() -> FastAPI:
                 for key, value in state.items()
             },
         }
+
+    @api.delete(
+        "/api/conversations/{conversation_id}/products/{product_id}", status_code=204
+    )
+    async def remove_product(conversation_id: str, product_id: str):
+        await load(conversation_id)
+        if not await anyio.to_thread.run_sync(
+            trips.products.remove, conversation_id, product_id
+        ):
+            raise HTTPException(404, "备选商品不存在")
 
     @api.post("/api/conversations/{conversation_id}/proposals/{proposal_id}/confirm")
     async def confirm_proposal(conversation_id: str, proposal_id: str):

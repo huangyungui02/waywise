@@ -13,6 +13,7 @@
 	import Composer from './Composer.svelte';
 	import TravelForm from './TravelForm.svelte';
 	import TripCard from './TripCard.svelte';
+	import ProductList from './ProductList.svelte';
 	import { travelPrompt } from './travel-brief';
 	let { loaded }: { loaded: LoadedConversation } = $props();
 	const conversation = new Conversation(
@@ -89,6 +90,18 @@
 />
 <svelte:document onvisibilitychange={() => conversation.reconnect()} />
 <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+	<ProductList
+		products={conversation.detail.products ?? []}
+		onrefresh={async () => {
+			await conversation.refresh();
+			conversation.save();
+		}}
+		onremove={async (id) => {
+			await api(`/conversations/${conversation.chat.id}/products/${id}`, { method: 'DELETE' });
+			await conversation.refresh();
+			conversation.save();
+		}}
+	/>
 	<ChatViewport bind:this={viewport}>
 		{#if conversation.recovering && !conversation.chat.error}<p
 				role="status"

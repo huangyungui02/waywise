@@ -495,7 +495,7 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
         ],
     ],
 )
-def test_present_products_continues_conversation(configured, invalid):
+def test_present_products_continues_conversation(configured, invalid, tmp_path):
     from products import Product
 
     requests = 0
@@ -528,5 +528,16 @@ def test_present_products_continues_conversation(configured, invalid):
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        assert agent.run_sync("推荐酒店").output == "你希望再比较一下吗？"
+        from trip import TripStore
+
+        store = TripStore(tmp_path / "products.db")
+        assert (
+            agent.run_sync(
+                "推荐酒店", deps=store, conversation_id="products-test"
+            ).output
+            == "你希望再比较一下吗？"
+        )
+        assert len(store.products.listing("products-test")) == (
+            1 if invalid is None else 0
+        )
     assert requests == 2

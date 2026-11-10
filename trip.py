@@ -10,6 +10,7 @@ from sqlalchemy import Text
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.pool import NullPool
 from sqlmodel import Field, Session, SQLModel, create_engine
+from products import ProductStore
 
 
 class Transport(BaseModel):
@@ -103,6 +104,7 @@ class TripStore:
 
     database: Path
     _engine: Engine = field(init=False, repr=False)
+    products: ProductStore = field(init=False)
 
     def __post_init__(self):
         # 与官方 Store 共用 SQLite 文件，每个 Session 结束后关闭连接。
@@ -110,6 +112,7 @@ class TripStore:
             URL.create("sqlite", database=str(self.database)), poolclass=NullPool
         )
         SQLModel.metadata.create_all(self._engine)
+        self.products = ProductStore(self._engine)
 
     def present(self, conversation_id: str, trip: Trip, proposal_id: str) -> None:
         with Session(self._engine) as session:
@@ -157,6 +160,7 @@ class TripStore:
         return self.get_state(conversation_id)["trip"]
 
     def delete(self, conversation_id: str) -> None:
+        self.products.delete_all(conversation_id)
         with Session(self._engine) as session:
             record = session.get(TripRecord, conversation_id)
             if record is not None:

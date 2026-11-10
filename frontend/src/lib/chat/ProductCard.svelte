@@ -1,14 +1,9 @@
 <script lang="ts" module>
-	export type Product = {
-		name: string;
-		description: string;
-		purchase_url: string;
-		image_url?: string | null;
-		price?: string | null;
-	};
+	export type { Product } from '#lib/api.js';
 </script>
 
 <script lang="ts">
+	import type { Product } from '#lib/api.js';
 	import { ImageOff } from '@lucide/svelte';
 	import * as Card from '#lib/components/ui/card/index.js';
 	let { product }: { product: Product } = $props();

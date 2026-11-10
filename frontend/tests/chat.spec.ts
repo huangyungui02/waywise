@@ -1064,3 +1064,61 @@ for (const mobile of [false, true]) {
 		);
 	});
 }
+
+for (const mobile of [false, true]) {
+	test(`${mobile ? '手机' : '桌面'}备选清单保存、移除和会话隔离`, async ({ page }) => {
+		await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+		await page.route('https://example.com/hotel.png', (route) => route.abort());
+		await page.goto('/');
+		await page.getByRole('textbox', { name: '旅行需求' }).fill('商品卡片测试');
+		await page.getByRole('button', { name: '发送', exact: true }).click();
+		await expect(
+			page.getByRole('button', { name: '打开备选清单（2）', exact: true })
+		).toBeVisible();
+		const original = page.url();
+		await page.getByRole('button', { name: '打开备选清单（2）', exact: true }).click();
+		const sheet = page.getByRole('dialog', { name: '备选清单（2）', exact: true });
+		await expect(sheet).toBeVisible();
+		await expect(sheet).toHaveAttribute('data-side', mobile ? 'bottom' : 'right');
+		await expect(sheet.getByRole('link', { name: '点击预订' })).toHaveCount(2);
+		await expect(sheet.getByText(/推荐于/)).toHaveCount(2);
+		await page.screenshot({
+			path: `/private/tmp/travel-products-${mobile ? 'mobile' : 'desktop'}.png`,
+			animations: 'disabled'
+		});
+		await page.route('**/products/*', (route) =>
+			route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({ detail: '暂时无法移除' })
+			})
+		);
+		await sheet.getByRole('button', { name: '移除测试酒店', exact: true }).click();
+		await expect(sheet.getByRole('alert')).toContainText('暂时无法移除');
+		await expect(sheet.getByText('测试酒店', { exact: true })).toBeVisible();
+		await page.unroute('**/products/*');
+		await sheet.getByRole('button', { name: '移除测试酒店', exact: true }).click();
+		const remaining = page.getByRole('dialog', { name: '备选清单（1）', exact: true });
+		await expect(remaining).toBeVisible();
+		await expect(remaining.getByRole('link', { name: '点击预订' })).toHaveCount(1);
+		await page.keyboard.press('Escape');
+		await page.reload();
+		await page.getByRole('button', { name: '打开备选清单（1）', exact: true }).click();
+		await expect(remaining.getByText('测试门票', { exact: true })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(
+			page.getByRole('region', { name: '推荐商品' }).getByText('测试酒店', { exact: true })
+		).toBeVisible();
+		const other = await (await page.request.post('/api/conversations')).json();
+		await page.goto(`/chat/${other.id}`);
+		await page.getByRole('button', { name: '打开备选清单（0）', exact: true }).click();
+		await expect(
+			page.getByText('还没有备选商品，咨询中推荐的商品会自动保存在这里。')
+		).toBeVisible();
+		await page.keyboard.press('Escape');
+		await page.goto(original);
+		await expect(
+			page.getByRole('button', { name: '打开备选清单（1）', exact: true })
+		).toBeVisible();
+	});
+}

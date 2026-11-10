@@ -5,6 +5,8 @@ import subprocess
 from datetime import datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
+from typing import Annotated
+from pydantic import Field
 
 from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
@@ -14,8 +16,23 @@ from pydantic_ai_harness import FileSystem, Skills
 from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
 from settings import ROOT, Settings
-from products import present_products
+from products import Product
 from trip import Trip, TripStore
+
+
+def present_products(
+    ctx: RunContext[TripStore], products: Annotated[list[Product], Field(min_length=1)]
+) -> list[Product]:
+    """在当前叙述位置展示已查到的酒店、门票、大巴等商品，并保存到本次旅行的备选清单；火车票和机票用文字展示。
+
+    先查询并核实商品，使用真实预订链接和对应图片，无可靠图片或价格时留空。
+    同一旅行内相同预订链接更新已有备选，日期、房型和班次等信息保留在介绍或价格说明中。
+    展示前用简短文字引出推荐，之后继续比较或询问偏好，正文不再重复图片和链接。
+    保存备选不代表用户已选定、确认或购买，不结束本轮咨询。
+    """
+    assert ctx.conversation_id is not None
+    ctx.deps.products.save(ctx.conversation_id, products)
+    return products
 
 
 def present_trip(ctx: RunContext[TripStore], trip: Trip) -> Trip:
@@ -81,7 +98,7 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
         ],
     )
 
-    agent.tool_plain(present_products)
+    agent.tool(sequential=True)(present_products)
 
     @agent.tool_plain
     def call_flyai(args: list[str]) -> dict:

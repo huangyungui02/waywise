@@ -19,8 +19,7 @@ from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, Functi
 from app import create_app as create_backend
 from settings import Settings
 from trip import Trip, TripStore
-from agent import present_trip
-from products import present_products
+from agent import present_trip, present_products
 from test_trip import ITINERARY
 
 search_replies: dict[str, anyio.Event] = {}
@@ -159,7 +158,7 @@ agent = Agent(
 )
 
 
-agent.tool_plain(present_products)
+agent.tool(present_products)
 
 
 @agent.tool
