@@ -9,9 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic_ai import Agent
-from pydantic_ai_harness.step_persistence.conversations import (
-    SqliteConversationStore,
-)
 from redis.asyncio import Redis
 from redis_fastapi import StreamBackend
 from redis_fastapi.config import get_settings as redis_settings
@@ -29,8 +26,7 @@ def create_app() -> FastAPI:
     settings = Settings()
     database = settings.database_path
     database.parent.mkdir(parents=True, exist_ok=True)
-    conversation_store = SqliteConversationStore(database=database)
-    travel = TravelStore(database=database)
+    store = TravelStore(database=database)
     redis = Redis.from_url(
         settings.redis_url.get_secret_value(),
         decode_responses=True,
@@ -43,8 +39,7 @@ def create_app() -> FastAPI:
     agent = create_agent(settings)
     replies = Replies(
         agent=agent,
-        conversations=conversation_store,
-        travel=travel,
+        store=store,
         redis=redis,
         streams=streams,
         max_concurrent_runs=settings.max_concurrent_runs,
@@ -52,11 +47,12 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(api: FastAPI):
-        async with redis:
+        async with redis, store:
             await redis.ping()
             await streams.detect()
-            await replies.recover_interrupted_runs()
+            await store.conversations.recover_interrupted_runs()
             api.state.replies = replies
+            api.state.store = store
             try:
                 yield
             finally:

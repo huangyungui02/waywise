@@ -4,11 +4,11 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
-from typing import Annotated
-from pydantic import Field
 
+from pydantic import Field
 from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
@@ -22,7 +22,7 @@ from app.models.products import Product
 from app.settings import ROOT, Settings
 
 
-def present_products(
+async def present_products(
     ctx: RunContext[TravelStore],
     products: Annotated[list[Product], Field(min_length=1)],
 ) -> list[Product]:
@@ -34,11 +34,11 @@ def present_products(
     保存备选不代表用户已选定、确认或购买，不结束本轮咨询。
     """
     assert ctx.conversation_id is not None
-    ctx.deps.products.save(ctx.conversation_id, products)
+    await ctx.deps.products.save(ctx.conversation_id, products)
     return products
 
 
-def present_arrangements(
+async def present_arrangements(
     ctx: RunContext[TravelStore], arrangements: TravelArrangements
 ) -> TravelArrangements:
     """提交选定的完整往返交通和住宿，以卡片展示并结束本轮，等待用户确认。
@@ -50,7 +50,9 @@ def present_arrangements(
     if issues := arrangements.issues():
         raise ModelRetry("；".join(issues))
     assert ctx.conversation_id is not None and ctx.tool_call_id is not None
-    ctx.deps.arrangements.present(ctx.conversation_id, arrangements, ctx.tool_call_id)
+    await ctx.deps.arrangements.present(
+        ctx.conversation_id, arrangements, ctx.tool_call_id
+    )
     return arrangements
 
 
@@ -142,6 +144,7 @@ def create_agent(
         try:
             result = subprocess.run(
                 ["flyai", *args],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -175,7 +178,7 @@ def create_agent(
         return f"当前北京时间：{datetime.now(ZoneInfo('Asia/Shanghai')):%Y-%m-%d %A %H:%M}。"
 
     @agent.tool
-    def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
+    async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
         """用户明确同意当前展示的方案后，确认并保存交通和住宿，再继续每日规划。
 
         自动读取当前会话的待确认方案，无需重新填写旅行数据。
@@ -183,7 +186,7 @@ def create_agent(
         """
         assert ctx.conversation_id is not None
         try:
-            arrangements = ctx.deps.arrangements.confirm(ctx.conversation_id)
+            arrangements = await ctx.deps.arrangements.confirm(ctx.conversation_id)
         except ValueError as error:
             return {"success": False, "issues": [str(error)]}
         return {

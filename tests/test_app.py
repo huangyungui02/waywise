@@ -26,8 +26,9 @@ from app.settings import Settings
 
 @pytest.fixture
 def configured(monkeypatch):
-    from app import replies
     from pydantic_ai.direct import model_request
+
+    from app.db import conversations
 
     async def local_title_request(model, messages, **kwargs):
         return await model_request(
@@ -51,7 +52,7 @@ def configured(monkeypatch):
             **kwargs,
         )
 
-    monkeypatch.setattr(replies, "model_request", local_title_request)
+    monkeypatch.setattr(conversations, "model_request", local_title_request)
     monkeypatch.setenv("AMAP_MAPS_API_KEY", "test-key")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-dashscope-key")
     monkeypatch.setenv("TRAVEL_MODEL", "qwen3.8-flash")
@@ -267,26 +268,28 @@ def test_web_allows_more_than_50_model_requests(app_factory, configured, tmp_pat
 
     agent = agent_module.create_agent()
 
-    with agent.override(model=FunctionModel(stream_function=stream_model)):
-        with TestClient(
+    with (
+        agent.override(model=FunctionModel(stream_function=stream_model)),
+        TestClient(
             app_factory(Settings(database_path=tmp_path / "test.db"), agent),
             base_url="http://127.0.0.1",
-        ) as client:
-            conversation_id = client.post("/api/conversations").json()["id"]
-            response = client.post(
-                f"/api/conversations/{conversation_id}/chat",
-                json={
-                    "id": conversation_id,
-                    "trigger": "submit-message",
-                    "messages": [
-                        {
-                            "id": "user-1",
-                            "role": "user",
-                            "parts": [{"type": "text", "text": "测试请求上限"}],
-                        }
-                    ],
-                },
-            )
+        ) as client,
+    ):
+        conversation_id = client.post("/api/conversations").json()["id"]
+        response = client.post(
+            f"/api/conversations/{conversation_id}/chat",
+            json={
+                "id": conversation_id,
+                "trigger": "submit-message",
+                "messages": [
+                    {
+                        "id": "user-1",
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "测试请求上限"}],
+                    }
+                ],
+            },
+        )
     assert response.status_code == 200
     assert "超过50次请求后正常完成" in response.text
     assert requests == 51
@@ -417,11 +420,11 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     assert "x-anthropic-billing-header" not in str(body)
 
 
-def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path):
-    from pydantic_ai_harness.step_persistence.conversations import (
-        ConversationSummary,
-        SqliteConversationStore,
-    )
+@pytest.mark.anyio
+async def test_auto_compaction_persists_and_resumes(
+    configured, monkeypatch, tmp_path, store_factory
+):
+    from pydantic_ai import Conversation
 
     monkeypatch.setenv("COMPACT_MAX_TOKENS", "2000")
     agent = agent_module.create_agent()
@@ -446,39 +449,32 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
         )
     history.append(ModelRequest(parts=[UserPromptPart("最近需求：酒店未购买")]))
 
-    async def run():
-        store = SqliteConversationStore(database=tmp_path / "history.db")
-        with agent.override(model=FunctionModel(respond, stream_function=stream)):
-            result = await agent.run("继续安排", message_history=history)
-            compacted = result.all_messages()
-            assert len(compacted) < len(history)
-            assert any(
-                isinstance(part, CompactionPart) and part.content == summary
-                for message in compacted
-                for part in message.parts
-            )
-            assert any(
-                isinstance(part, UserPromptPart)
-                and part.content == "最近需求：酒店未购买"
-                for message in compacted
-                for part in message.parts
-            )
-            await store.save(
-                summary=ConversationSummary(
-                    id="compact-test", title="杭州旅行", workspace=str(tmp_path)
-                ),
-                messages=compacted,
-            )
-            saved = await store.get(conversation_id="compact-test")
-            resumed = await agent.run("酒店还没买", message_history=saved.messages)
-            assert resumed.output == summary
-            assert any(
-                isinstance(part, CompactionPart) and part.content == summary
-                for message in requests[-1]
-                for part in message.parts
-            )
-
-    asyncio.run(run())
+    store = (await store_factory(tmp_path / "history.db")).conversations
+    with agent.override(model=FunctionModel(respond, stream_function=stream)):
+        result = await agent.run("继续安排", message_history=history)
+        compacted = result.all_messages()
+        assert len(compacted) < len(history)
+        assert any(
+            isinstance(part, CompactionPart) and part.content == summary
+            for message in compacted
+            for part in message.parts
+        )
+        assert any(
+            isinstance(part, UserPromptPart) and part.content == "最近需求：酒店未购买"
+            for message in compacted
+            for part in message.parts
+        )
+        await store.save(
+            Conversation(conversation_id="compact-test", messages=compacted)
+        )
+        saved = await store.load("compact-test")
+        resumed = await agent.run("酒店还没买", message_history=saved.messages)
+        assert resumed.output == summary
+        assert any(
+            isinstance(part, CompactionPart) and part.content == summary
+            for message in requests[-1]
+            for part in message.parts
+        )
 
 
 @pytest.mark.parametrize(
@@ -495,7 +491,10 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
         ],
     ],
 )
-def test_present_products_continues_conversation(configured, invalid, tmp_path):
+@pytest.mark.anyio
+async def test_present_products_continues_conversation(
+    configured, invalid, tmp_path, store_factory
+):
     from app.models.products import Product
 
     requests = 0
@@ -528,16 +527,11 @@ def test_present_products_continues_conversation(configured, invalid, tmp_path):
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        from app.db.travel import TravelStore
-
-        store = TravelStore(tmp_path / "products.db")
+        store = await store_factory(tmp_path / "products.db")
         assert (
-            agent.run_sync(
-                "推荐酒店", deps=store, conversation_id="products-test"
-            ).output
-            == "你希望再比较一下吗？"
-        )
-        assert len(store.products.listing("products-test")) == (
+            await agent.run("推荐酒店", deps=store, conversation_id="products-test")
+        ).output == "你希望再比较一下吗？"
+        assert len(await store.products.list("products-test")) == (
             1 if invalid is None else 0
         )
     assert requests == 2

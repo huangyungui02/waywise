@@ -1,7 +1,7 @@
 """浏览器测试专用：真实 FastAPI/SQLite/流协议，使用离线模型。"""
 
-import os
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,13 +15,13 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
-
-from app.main import create_app as create_backend
-from app.settings import Settings
-from app.models.arrangements import TravelArrangements
-from app.db.travel import TravelStore
-from app.agent import present_arrangements, present_products
 from test_arrangements import ITINERARY
+
+from app.agent import present_arrangements, present_products
+from app.db.travel import TravelStore
+from app.main import create_app as create_backend
+from app.models.arrangements import TravelArrangements
+from app.settings import Settings
 
 search_replies: dict[str, anyio.Event] = {}
 
@@ -167,13 +167,13 @@ agent.tool(present_products)
 
 
 @agent.tool
-def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
+async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
     """浏览器测试的确认入口；使用真实 SQLite 确认逻辑。"""
     assert ctx.conversation_id is not None
     return {
-        "arrangements": ctx.deps.arrangements.confirm(ctx.conversation_id).model_dump(
-            mode="json"
-        )
+        "arrangements": (
+            await ctx.deps.arrangements.confirm(ctx.conversation_id)
+        ).model_dump(mode="json")
     }
 
 

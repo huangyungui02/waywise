@@ -32,3 +32,23 @@ class ProductRecord(Base):
     purchase_url: Mapped[str]
     data: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime]
+
+
+class ConversationRow(Base):
+    __tablename__ = "conversation_records"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    scope: Mapped[str | None] = mapped_column(index=True)
+    revision: Mapped[str]
+    record_data: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(default="新的旅行")
+    outcome: Mapped[str] = mapped_column(default="completed")
+    updated_at: Mapped[datetime]
+
+
+class ConversationEntryRow(Base):
+    __tablename__ = "conversation_entries"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    parent_id: Mapped[str | None] = mapped_column(index=True)
+    message_data: Mapped[str] = mapped_column(Text)

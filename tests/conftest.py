@@ -14,7 +14,6 @@ def offline_logfire(monkeypatch):
 def offline_redis(monkeypatch):
     from fakeredis import FakeServer
     from fakeredis.aioredis import FakeRedis
-
     from stream_backend import LocalStreams
 
     monkeypatch.setattr("app.main.StreamBackend", LocalStreams)
@@ -45,3 +44,22 @@ def app_factory(monkeypatch):
             return app.create_app()
 
     return create
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+async def store_factory():
+    from contextlib import AsyncExitStack
+
+    from app.db.travel import TravelStore
+
+    async with AsyncExitStack() as stack:
+
+        async def create(database):
+            return await stack.enter_async_context(TravelStore(database))
+
+        yield create

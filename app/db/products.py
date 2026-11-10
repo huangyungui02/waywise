@@ -1,27 +1,30 @@
 """旅行商品备选的保存、查询和删除。"""
 
-from datetime import datetime, timezone
+from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime
 
-from app.models.products import Product, SavedProduct
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
 from app.db.tables import ProductRecord
+from app.models.products import Product, SavedProduct
 
 
 class ProductStore:
-    def __init__(self, engine: Engine):
+    def __init__(self, engine: AsyncEngine):
         self.engine = engine
 
-    def save(self, conversation_id: str, products: list[Product]) -> None:
-        with Session(self.engine) as session:
+    async def save(self, conversation_id: str, products: list[Product]) -> None:
+        async with AsyncSession(self.engine) as session:
             for product in products:
                 url = str(product.purchase_url)
-                record = session.scalars(
-                    select(ProductRecord).where(
-                        ProductRecord.conversation_id == conversation_id,
-                        ProductRecord.purchase_url == url,
+                record = (
+                    await session.scalars(
+                        select(ProductRecord).where(
+                            ProductRecord.conversation_id == conversation_id,
+                            ProductRecord.purchase_url == url,
+                        )
                     )
                 ).first()
                 if record is None:
@@ -29,46 +32,50 @@ class ProductStore:
                         conversation_id=conversation_id,
                         purchase_url=url,
                         data=product.model_dump_json(),
-                        updated_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(UTC),
                     )
                 else:
                     record.data = product.model_dump_json()
-                    record.updated_at = datetime.now(timezone.utc)
+                    record.updated_at = datetime.now(UTC)
                 session.add(record)
-                session.flush()
-            session.commit()
+            await session.commit()
 
-    def listing(self, conversation_id: str) -> list[SavedProduct]:
-        with Session(self.engine) as session:
-            records = session.scalars(
-                select(ProductRecord)
-                .where(ProductRecord.conversation_id == conversation_id)
-                .order_by(ProductRecord.updated_at.desc(), ProductRecord.id)
+    async def list(self, conversation_id: str) -> list[SavedProduct]:
+        async with AsyncSession(self.engine) as session:
+            records = (
+                await session.scalars(
+                    select(ProductRecord)
+                    .where(ProductRecord.conversation_id == conversation_id)
+                    .order_by(ProductRecord.updated_at.desc(), ProductRecord.id)
+                )
             ).all()
             return [
                 SavedProduct(
                     **Product.model_validate_json(record.data).model_dump(),
                     id=record.id,
-                    updated_at=record.updated_at.replace(tzinfo=timezone.utc),
+                    updated_at=record.updated_at.replace(tzinfo=UTC),
                 )
                 for record in records
             ]
 
-    def remove(self, conversation_id: str, product_id: str) -> bool:
-        with Session(self.engine) as session:
-            record = session.get(ProductRecord, product_id)
-            if record is None or record.conversation_id != conversation_id:
-                return False
-            session.delete(record)
-            session.commit()
-            return True
+    async def remove(self, conversation_id: str, product_id: str) -> bool:
+        async with AsyncSession(self.engine) as session:
+            removed = await session.scalar(
+                delete(ProductRecord)
+                .where(
+                    ProductRecord.id == product_id,
+                    ProductRecord.conversation_id == conversation_id,
+                )
+                .returning(ProductRecord.id)
+            )
+            await session.commit()
+            return removed is not None
 
-    def delete_all(self, conversation_id: str) -> None:
-        with Session(self.engine) as session:
-            for record in session.scalars(
-                select(ProductRecord).where(
+    async def delete_all(self, conversation_id: str) -> None:
+        async with AsyncSession(self.engine) as session:
+            await session.execute(
+                delete(ProductRecord).where(
                     ProductRecord.conversation_id == conversation_id
                 )
-            ):
-                session.delete(record)
-            session.commit()
+            )
+            await session.commit()

@@ -1,24 +1,33 @@
 """路由共用的应用依赖与会话读取。"""
 
-from typing import Annotated, cast
+from typing import cast
 
 from fastapi import Depends, HTTPException, Request
-from pydantic_ai_harness.step_persistence.conversations import SavedConversation
 
+from app.db.conversations import ConversationStore
+from app.db.tables import ConversationRow
+from app.db.travel import TravelStore
 from app.replies import Replies
 
 
-def get_replies(request: Request) -> Replies:
+async def get_replies(request: Request) -> Replies:
     return cast(Replies, request.app.state.replies)
 
 
-RepliesDep = Annotated[Replies, Depends(get_replies)]
+async def get_store(request: Request) -> TravelStore:
+    return cast(TravelStore, request.app.state.store)
 
 
-async def load_conversation(
-    conversation_id: str, replies: Replies
-) -> SavedConversation:
+async def get_conversations(
+    store: TravelStore = Depends(get_store),
+) -> ConversationStore:
+    return store.conversations
+
+
+async def require_conversation(
+    conversation_id: str, conversations: ConversationStore = Depends(get_conversations)
+) -> ConversationRow:
     try:
-        return await replies.conversations.get(conversation_id=conversation_id)
+        return await conversations.get(conversation_id)
     except LookupError:
         raise HTTPException(404, "会话不存在") from None

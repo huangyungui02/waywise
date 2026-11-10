@@ -1,20 +1,36 @@
 """会话、商品备选和交通住宿确认接口。"""
 
-from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated
 
-import anyio
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, StringConstraints
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
-from pydantic_ai_harness.step_persistence.conversations import ConversationSummary
 
-from app.dependencies import RepliesDep, load_conversation
+from app.db.conversations import ConversationStore
+from app.db.tables import ConversationRow
+from app.db.travel import TravelStore
+from app.dependencies import (
+    get_conversations,
+    get_replies,
+    get_store,
+    require_conversation,
+)
 from app.models.arrangements import TravelArrangements
-from app.settings import ROOT
-
+from app.replies import Replies
 
 router = APIRouter(prefix="/api/conversations")
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    outcome: str
+    updated_at: Annotated[
+        datetime, AfterValidator(lambda value: value.replace(tzinfo=UTC))
+    ]
 
 
 class ConversationTitle(BaseModel):
@@ -23,49 +39,54 @@ class ConversationTitle(BaseModel):
     ]
 
 
-@router.get("")
-async def list_conversations(replies: RepliesDep):
-    return [asdict(item) for item in await replies.conversations.listing()]
-
-
-@router.post("", status_code=201)
-async def new_conversation(replies: RepliesDep):
-    summary = await replies.conversations.save(
-        summary=ConversationSummary(workspace=str(ROOT), title="新的旅行"),
-        messages=[],
-    )
-    return asdict(summary)
-
-
-@router.patch("/{conversation_id}", status_code=204)
-async def rename_conversation(
-    replies: RepliesDep, conversation_id: str, body: ConversationTitle
+@router.get("", response_model=list[ConversationSummary])
+async def list_conversations(
+    conversations: ConversationStore = Depends(get_conversations),
 ):
-    saved = await load_conversation(conversation_id, replies)
-    if not await replies.conversations.name(
-        source=saved.summary, title=body.title, manual=True
-    ):
-        raise HTTPException(409, "会话已更新，请重新编辑标题")
+    return await conversations.list()
+
+
+@router.post("", status_code=201, response_model=ConversationSummary)
+async def new_conversation(
+    conversations: ConversationStore = Depends(get_conversations),
+):
+    return await conversations.create()
+
+
+@router.patch(
+    "/{conversation_id}", status_code=204, dependencies=[Depends(require_conversation)]
+)
+async def rename_conversation(
+    conversation_id: str,
+    body: ConversationTitle,
+    conversations: ConversationStore = Depends(get_conversations),
+):
+    await conversations.rename(conversation_id, body.title)
 
 
 @router.get("/{conversation_id}")
-async def get_conversation(replies: RepliesDep, conversation_id: str):
+async def get_conversation(
+    conversation_id: str,
+    record: ConversationRow = Depends(require_conversation),
+    replies: Replies = Depends(get_replies),
+    conversations: ConversationStore = Depends(get_conversations),
+    store: TravelStore = Depends(get_store),
+):
     if reply := replies.running.get(conversation_id):
         await reply.ready.wait()
-    saved = await load_conversation(conversation_id, replies)
-    state = await anyio.to_thread.run_sync(
-        replies.travel.arrangements.get_state, conversation_id
-    )
+        record = await conversations.get(conversation_id)
+    conversation = await conversations.load(conversation_id)
+    if conversation is None:
+        raise HTTPException(404, "会话不存在")
+    state = await store.arrangements.get_state(conversation_id)
     checkpoint = await replies.recovery(conversation_id)
     return {
-        "products": await anyio.to_thread.run_sync(
-            replies.travel.products.listing, conversation_id
-        ),
+        "products": await store.products.list(conversation_id),
         "recovery": checkpoint,
-        "summary": asdict(saved.summary),
+        "summary": ConversationSummary.model_validate(record),
         "messages": [
             m.model_dump(mode="json", by_alias=True, exclude_none=True)
-            for m in VercelAIAdapter.dump_messages(saved.messages, sdk_version=6)
+            for m in VercelAIAdapter.dump_messages(conversation.messages, sdk_version=6)
         ],
         **{
             key: value.model_dump(mode="json")
@@ -76,25 +97,35 @@ async def get_conversation(replies: RepliesDep, conversation_id: str):
     }
 
 
-@router.delete("/{conversation_id}/products/{product_id}", status_code=204)
-async def remove_product(replies: RepliesDep, conversation_id: str, product_id: str):
-    await load_conversation(conversation_id, replies)
-    if not await anyio.to_thread.run_sync(
-        replies.travel.products.remove, conversation_id, product_id
-    ):
+@router.delete(
+    "/{conversation_id}/products/{product_id}",
+    status_code=204,
+    dependencies=[Depends(require_conversation)],
+)
+async def remove_product(
+    conversation_id: str,
+    product_id: str,
+    store: TravelStore = Depends(get_store),
+):
+    if not await store.products.remove(conversation_id, product_id):
         raise HTTPException(404, "备选商品不存在")
 
 
-@router.post("/{conversation_id}/proposals/{proposal_id}/confirm")
-async def confirm_proposal(replies: RepliesDep, conversation_id: str, proposal_id: str):
-    await load_conversation(conversation_id, replies)
+@router.post(
+    "/{conversation_id}/proposals/{proposal_id}/confirm",
+    dependencies=[Depends(require_conversation)],
+)
+async def confirm_proposal(
+    conversation_id: str,
+    proposal_id: str,
+    replies: Replies = Depends(get_replies),
+    store: TravelStore = Depends(get_store),
+):
     if conversation_id in replies.busy:
         raise HTTPException(409, "请等待当前回复结束后确认")
     replies.busy.add(conversation_id)
     try:
-        arrangements = await anyio.to_thread.run_sync(
-            replies.travel.arrangements.confirm, conversation_id, proposal_id
-        )
+        arrangements = await store.arrangements.confirm(conversation_id, proposal_id)
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
     finally:
@@ -102,17 +133,19 @@ async def confirm_proposal(replies: RepliesDep, conversation_id: str, proposal_i
     return arrangements.model_dump(mode="json")
 
 
-@router.delete("/{conversation_id}", status_code=204)
-async def delete_conversation(replies: RepliesDep, conversation_id: str):
-    saved = await load_conversation(conversation_id, replies)
+@router.delete(
+    "/{conversation_id}", status_code=204, dependencies=[Depends(require_conversation)]
+)
+async def delete_conversation(
+    conversation_id: str,
+    replies: Replies = Depends(get_replies),
+    store: TravelStore = Depends(get_store),
+):
     if conversation_id in replies.busy:
         raise HTTPException(409, "请先停止当前回复，再删除会话")
     replies.busy.add(conversation_id)
     try:
-        await replies.conversations.delete(source=saved.summary)
-        await anyio.to_thread.run_sync(
-            replies.travel.delete_conversation, conversation_id
-        )
-        await replies.redis.delete(replies.recovery_key(conversation_id))
+        await store.delete_conversation(conversation_id)
+        await replies.clear_recovery(conversation_id)
     finally:
         replies.busy.discard(conversation_id)

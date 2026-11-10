@@ -6,13 +6,11 @@ import pytest
 from pydantic import ValidationError
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
-from test_app import configured  # noqa: F401
+from test_app import configured as configured  # noqa: PLC0414 — 导出 pytest fixture。
 
 from app import agent as agent_module
 from app.models.arrangements import TravelArrangements
 from app.models.products import Product
-from app.db.travel import TravelStore
-
 
 ITINERARY = {
     "origin": "上海",
@@ -90,10 +88,11 @@ def test_transport_schema(itinerary):
         TravelArrangements.model_validate(itinerary)
 
 
-def test_proposal_ends_run_and_confirmation_uses_pending(
-    configured, itinerary, tmp_path
+@pytest.mark.anyio
+async def test_proposal_ends_run_and_confirmation_uses_pending(
+    configured, itinerary, tmp_path, store_factory
 ):
-    store = TravelStore(database=tmp_path / "travel.db")
+    store = await store_factory(database=tmp_path / "travel.db")
     agent = agent_module.create_agent()
     calls = 0
 
@@ -110,12 +109,14 @@ def test_proposal_ends_run_and_confirmation_uses_pending(
         )
 
     with agent.override(model=FunctionModel(propose)):
-        result = agent.run_sync("选好了", deps=store, conversation_id="chat-a")
+        result = await agent.run("选好了", deps=store, conversation_id="chat-a")
     assert calls == 1
     assert result.output == TravelArrangements.model_validate(itinerary)
-    assert store.arrangements.get("chat-a") is None
-    assert store.arrangements.get_state("chat-a")["pending_id"] == "proposal-1"
-    assert store.arrangements.get_state("chat-b")["pending_arrangements"] is None
+    assert (await store.arrangements.get("chat-a")) is None
+    assert (await store.arrangements.get_state("chat-a"))["pending_id"] == "proposal-1"
+    assert (await store.arrangements.get_state("chat-b"))[
+        "pending_arrangements"
+    ] is None
 
     def confirm(messages, info):
         if messages[-1].parts[0].part_kind == "tool-return":
@@ -123,15 +124,20 @@ def test_proposal_ends_run_and_confirmation_uses_pending(
         return ModelResponse(parts=[ToolCallPart("confirm_arrangements", {})])
 
     with agent.override(model=FunctionModel(confirm)):
-        agent.run_sync("确认", deps=store, conversation_id="chat-a")
-        missing = agent.run_sync("确认", deps=store, conversation_id="chat-b")
-    assert store.arrangements.get("chat-a") == result.output
-    assert store.arrangements.get_state("chat-a")["pending_arrangements"] is None
+        await agent.run("确认", deps=store, conversation_id="chat-a")
+        missing = await agent.run("确认", deps=store, conversation_id="chat-b")
+    assert (await store.arrangements.get("chat-a")) == result.output
+    assert (await store.arrangements.get_state("chat-a"))[
+        "pending_arrangements"
+    ] is None
     assert "没有待确认方案" in str(missing.all_messages())
 
 
-def test_invalid_proposal_retries_without_saving(configured, itinerary, tmp_path):
-    store = TravelStore(database=tmp_path / "travel.db")
+@pytest.mark.anyio
+async def test_invalid_proposal_retries_without_saving(
+    configured, itinerary, tmp_path, store_factory
+):
+    store = await store_factory(database=tmp_path / "travel.db")
     itinerary["stays"] = []
     calls = 0
 
@@ -147,8 +153,10 @@ def test_invalid_proposal_retries_without_saving(configured, itinerary, tmp_path
 
     agent = agent_module.create_agent()
     with agent.override(model=FunctionModel(model)):
-        agent.run_sync("展示方案", deps=store, conversation_id="chat-a")
-    assert store.arrangements.get_state("chat-a")["pending_arrangements"] is None
+        await agent.run("展示方案", deps=store, conversation_id="chat-a")
+    assert (await store.arrangements.get_state("chat-a"))[
+        "pending_arrangements"
+    ] is None
 
 
 def test_time_is_a_tool(configured):
@@ -204,59 +212,99 @@ def test_bus_to_scenic_destination(itinerary):
         TravelArrangements.model_validate(itinerary)
 
 
-def test_arrangements_store_save_update_isolation_and_delete(tmp_path, itinerary):
+@pytest.mark.anyio
+async def test_arrangements_store_save_update_isolation_and_delete(
+    tmp_path, itinerary, store_factory
+):
     database = tmp_path / "旅行?#.db"
-    store = TravelStore(database=database)
+    store = await store_factory(database=database)
     arrangements = TravelArrangements.model_validate(itinerary)
-    assert store.arrangements.get("missing") is None
-    store.delete_conversation("missing")
-    store.arrangements.present("chat-a", arrangements, "a1")
-    store.arrangements.confirm("chat-a")
-    store.arrangements.present("chat-b", arrangements, "b1")
-    store.arrangements.confirm("chat-b")
+    assert (await store.arrangements.get("missing")) is None
+    await store.arrangements.delete("missing")
+    await store.arrangements.present("chat-a", arrangements, "a1")
+    await store.arrangements.confirm("chat-a")
+    await store.arrangements.present("chat-b", arrangements, "b1")
+    await store.arrangements.confirm("chat-b")
     updated = arrangements.model_copy(deep=True)
     updated.outbound.purchased = True
     updated.outbound.purchase_url = None
-    store.arrangements.present("chat-a", updated, "a2")
-    assert store.arrangements.get("chat-a") == arrangements
-    store = TravelStore(database=database)
-    assert store.arrangements.get_state("chat-a")["pending_arrangements"] == updated
+    await store.arrangements.present("chat-a", updated, "a2")
+    assert (await store.arrangements.get("chat-a")) == arrangements
+    store = await store_factory(database=database)
+    assert (await store.arrangements.get_state("chat-a"))[
+        "pending_arrangements"
+    ] == updated
     with pytest.raises(ValueError, match="已更新"):
-        store.arrangements.confirm("chat-a", "a1")
-    store.arrangements.confirm("chat-a", "a2")
-    assert store.arrangements.get_state("chat-a")["confirmed_id"] == "a2"
+        await store.arrangements.confirm("chat-a", "a1")
+    await store.arrangements.confirm("chat-a", "a2")
+    assert (await store.arrangements.get_state("chat-a"))["confirmed_id"] == "a2"
     with pytest.raises(ValueError, match="没有待确认"):
-        store.arrangements.confirm("chat-a")
-    store = TravelStore(database=database)
-    assert store.arrangements.get("chat-a") == updated
-    assert store.arrangements.get("chat-b") == arrangements
-    store.delete_conversation("chat-a")
-    store.delete_conversation("chat-a")
-    store = TravelStore(database=database)
-    assert store.arrangements.get("chat-a") is None
-    assert store.arrangements.get("chat-b") == arrangements
+        await store.arrangements.confirm("chat-a")
+    store = await store_factory(database=database)
+    assert (await store.arrangements.get("chat-a")) == updated
+    assert (await store.arrangements.get("chat-b")) == arrangements
+    await store.arrangements.delete("chat-a")
+    await store.arrangements.delete("chat-a")
+    store = await store_factory(database=database)
+    assert (await store.arrangements.get("chat-a")) is None
+    assert (await store.arrangements.get("chat-b")) == arrangements
 
 
-def test_delete_conversation_clears_both_stores(tmp_path, itinerary):
-    store = TravelStore(tmp_path / "travel.db")
+@pytest.mark.anyio
+async def test_delete_conversation_clears_all_stores(
+    tmp_path, itinerary, store_factory
+):
+
+    from pydantic_ai import Conversation
+    from pydantic_ai.conversation_store import ConversationConflict
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    store = await store_factory(tmp_path / "travel.db")
     arrangements = TravelArrangements.model_validate(itinerary)
     product = Product(
         name="酒店", description="近车站", purchase_url="https://example.com/hotel"
     )
+
     for conversation_id in ("first", "other"):
-        store.arrangements.present(conversation_id, arrangements, "proposal")
-        store.products.save(conversation_id, [product])
+        await store.conversations.save(
+            Conversation(
+                conversation_id=conversation_id,
+                messages=[ModelRequest(parts=[UserPromptPart("去杭州")])],
+            )
+        )
+        await store.arrangements.present(conversation_id, arrangements, "proposal")
+        await store.products.save(conversation_id, [product])
 
-    # 单独删除交通住宿安排不影响商品；删除会话才清理两个存储。
-    store.arrangements.delete("first")
-    assert len(store.products.listing("first")) == 1
-    store.arrangements.present("first", arrangements, "replacement")
-    store.delete_conversation("first")
-
-    reopened = TravelStore(tmp_path / "travel.db")
-    assert reopened.arrangements.get_state("first")["pending_arrangements"] is None
-    assert reopened.products.listing("first") == []
-    assert (
-        reopened.arrangements.get_state("other")["pending_arrangements"] == arrangements
+    # 单独删除交通住宿安排不影响商品或会话历史。
+    await store.arrangements.delete("first")
+    assert len(await store.products.list("first")) == 1
+    assert (await store.conversations.load("first")).messages
+    await store.arrangements.present("first", arrangements, "replacement")
+    saved = await store.conversations.load("first")
+    await store.conversations.save_messages(
+        conversation=await store.conversations.load("first"),
+        outcome="completed",
+        messages=[ModelRequest(parts=[UserPromptPart("换一个酒店")])],
     )
-    assert len(reopened.products.listing("other")) == 1
+    with pytest.raises(ConversationConflict):
+        await store.conversations.delete_record(
+            "first", expected_revision=saved.revision
+        )
+    assert (await store.arrangements.get_state("first"))[
+        "pending_arrangements"
+    ] == arrangements
+    assert len(await store.products.list("first")) == 1
+    latest = await store.conversations.load("first")
+    await store.delete_conversation(latest.conversation_id)
+
+    reopened = await store_factory(tmp_path / "travel.db")
+    assert await reopened.conversations.load("first") is None
+    assert (await reopened.arrangements.get_state("first"))[
+        "pending_arrangements"
+    ] is None
+    assert (await reopened.products.list("first")) == []
+    assert (await reopened.conversations.load("other")).messages
+    assert (await reopened.arrangements.get_state("other"))[
+        "pending_arrangements"
+    ] == arrangements
+    assert len(await reopened.products.list("other")) == 1

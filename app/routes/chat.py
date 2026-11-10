@@ -1,25 +1,26 @@
 """回复发送、停止与 Redis 流恢复接口。"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 
-from app.dependencies import RepliesDep, load_conversation
-from app.replies import stream_response
+from app.dependencies import get_replies, require_conversation
+from app.replies import Replies
+from app.streams import stream_response
 
-
-router = APIRouter(prefix="/api/conversations")
+router = APIRouter(
+    prefix="/api/conversations", dependencies=[Depends(require_conversation)]
+)
 
 
 @router.get("/{conversation_id}/chat/stream")
 async def resume_chat(
-    replies: RepliesDep,
     conversation_id: str,
+    replies: Replies = Depends(get_replies),
     run_id: str | None = None,
     after: str = "0-0",
 ):
-    await load_conversation(conversation_id, replies)
     checkpoint = await replies.recovery(conversation_id)
     if checkpoint is None:
         if run_id is not None:
@@ -36,14 +37,16 @@ async def resume_chat(
 
 
 @router.post("/{conversation_id}/chat/stop", status_code=204)
-async def stop_chat(replies: RepliesDep, conversation_id: str):
-    await load_conversation(conversation_id, replies)
+async def stop_chat(conversation_id: str, replies: Replies = Depends(get_replies)):
     await replies.stop(conversation_id)
 
 
 @router.post("/{conversation_id}/chat")
-async def chat(replies: RepliesDep, conversation_id: str, body: SubmitMessage):
-    await load_conversation(conversation_id, replies)
+async def chat(
+    conversation_id: str,
+    body: SubmitMessage,
+    replies: Replies = Depends(get_replies),
+):
     reply = await replies.start(conversation_id, body)
     return await stream_response(
         reply.adapter, replies.streams, conversation_id, reply.run_id

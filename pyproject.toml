@@ -4,21 +4,26 @@ version = "0.1.0"
 description = "国内旅行规划：PydanticAI + 高德 MCP + 飞猪 Skill"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic-ai-slim[mcp,openai,web]==2.63.0",
-    "pydantic-ai-harness[skills]==0.63.0",
+    "pydantic-ai-slim[mcp,openai,web]==2.66.0",
+    "pydantic-ai-harness[skills]==0.66.0",
     "pydantic-settings>=2.12,<3",
     "fastapi>=0.162.0",
     "logfire[fastapi]>=5.4,<6",
-    "sqlalchemy>=2.1.8,<3",
+    "sqlalchemy[asyncio]>=2.1.8,<3",
     "redis>=6.4,<9",
     "fastapi-redis-sdk",
+    "aiosqlite>=0.22,<1",
 ]
 
 [dependency-groups]
 dev = [
     "fakeredis>=2.32,<3",
     "pytest>=8,<10",
+    "ruff>=0.17.4",
 ]
 
 [tool.uv.sources]
 fastapi-redis-sdk = { git = "https://github.com/redis/fastapi-redis-sdk.git", rev = "fd7f483022c9b97ae437e972e2b84ea54b3034e6" }
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
