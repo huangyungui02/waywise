@@ -14,6 +14,7 @@ from pydantic_ai_harness import FileSystem, Skills
 from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
 from settings import ROOT, Settings
+from products import present_products
 from trip import Trip, TripStore
 
 
@@ -79,6 +80,8 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
             FileSystem(read_only=True, tools=["read_file"]),
         ],
     )
+
+    agent.tool_plain(present_products)
 
     @agent.tool_plain
     def call_flyai(args: list[str]) -> dict:

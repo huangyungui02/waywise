@@ -993,3 +993,74 @@ for (const mobile of [false, true]) {
 		expect(invalid.status()).toBe(422);
 	});
 }
+
+for (const mobile of [false, true]) {
+	test(`${mobile ? '手机' : '桌面'}商品卡片穿插正文并在刷新后恢复`, async ({ page }) => {
+		await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+		await page.route('https://example.com/hotel.png', (route) =>
+			route.fulfill({
+				contentType: 'image/svg+xml',
+				body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="800" height="1200" fill="#789080"/></svg>'
+			})
+		);
+		await page.goto('/');
+		await page.getByRole('textbox', { name: '旅行需求' }).fill('商品卡片测试');
+		await page.getByRole('button', { name: '发送', exact: true }).click();
+		const after = page.getByText('你更倾向这家酒店，还是希望再比较一下？');
+		await expect(after).toBeVisible();
+		for (const reload of [false, true]) {
+			if (reload) await page.reload();
+			const products = page.getByRole('region', { name: '推荐商品' });
+			await expect(products.getByText('测试酒店', { exact: true })).toBeVisible();
+			await expect(products.getByRole('link', { name: '点击预订' })).toHaveCount(2);
+			await expect(products.getByRole('link', { name: '点击预订' }).first()).toHaveAttribute(
+				'href',
+				'https://example.com/hotel'
+			);
+			await expect(products.getByText('暂无图片')).toBeVisible();
+			await expect(products.getByText('12月1日 ¥94 起 / 房 / 晚')).toBeVisible();
+			const image = products.getByRole('img', { name: '测试酒店' });
+			const box = await image.boundingBox();
+			expect(box).not.toBeNull();
+			expect(box!.width / box!.height).toBeCloseTo(mobile ? 3 / 4 : 4 / 3, 1);
+			const booking = products.getByRole('link', { name: '点击预订' }).first();
+			await expect(booking.locator('svg')).toHaveCount(0);
+			if (mobile) {
+				// 同一帧读取位置，避免聊天自动滚动影响多次 boundingBox 的比较。
+				const layout = await products
+					.locator('[data-slot="card"]')
+					.first()
+					.evaluate((card) => {
+						const rect = (selector: string) => {
+							const r = card.querySelector(selector)!.getBoundingClientRect();
+							return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+						};
+						return {
+							image: rect('img'),
+							title: rect('[data-slot="card-title"]'),
+							price: rect('[data-slot="card-footer"] p'),
+							link: rect('a')
+						};
+					});
+				expect(layout.link.y).toBeGreaterThanOrEqual(layout.image.bottom);
+				expect(layout.title.x).toBeGreaterThanOrEqual(layout.image.right);
+				expect(layout.price.x).toBeCloseTo(layout.image.x, 0);
+				expect(layout.price.y).toBeGreaterThanOrEqual(layout.image.bottom);
+				expect(layout.link.x).toBeGreaterThanOrEqual(layout.price.right);
+				await expect(booking).toHaveCSS('text-decoration-line', 'underline');
+			}
+			expect(box!.width).toBeLessThanOrEqual(160);
+			const order = await page.locator('article').last().innerText();
+			expect(order.indexOf('综合预算')).toBeLessThan(order.indexOf('测试酒店'));
+			expect(order.indexOf('测试门票')).toBeLessThan(order.indexOf('你更倾向'));
+			expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+				true
+			);
+		}
+		await page.route('https://example.com/hotel.png', (route) => route.abort());
+		await page.reload();
+		await expect(page.getByRole('region', { name: '推荐商品' }).getByText('暂无图片')).toHaveCount(
+			2
+		);
+	});
+}

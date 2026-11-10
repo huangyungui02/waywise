@@ -1,6 +1,7 @@
 """浏览器测试专用：真实 FastAPI/SQLite/流协议，使用离线模型。"""
 
 import os
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from app import create_app as create_backend
 from settings import Settings
 from trip import Trip, TripStore
 from agent import present_trip
+from products import present_products
 from test_trip import ITINERARY
 
 search_replies: dict[str, anyio.Event] = {}
@@ -32,6 +34,33 @@ async def stream(messages, info):
         if isinstance(p, UserPromptPart)
     )
     if isinstance(messages[-1].parts[-1], UserPromptPart):
+        if prompt == "商品卡片测试":
+            yield "综合预算，我推荐下面这家酒店："
+            yield {
+                0: DeltaToolCall(
+                    name="present_products",
+                    json_args=json.dumps(
+                        {
+                            "products": [
+                                {
+                                    "name": "测试酒店",
+                                    "description": "近景区，适合两晚住宿。",
+                                    "price": "12月1日 ¥94 起 / 房 / 晚",
+                                    "purchase_url": "https://example.com/hotel",
+                                    "image_url": "https://example.com/hotel.png",
+                                },
+                                {
+                                    "name": "测试门票",
+                                    "description": "游览日期及库存请在预订页面核实。",
+                                    "purchase_url": "https://example.com/ticket",
+                                },
+                            ]
+                        }
+                    ),
+                    tool_call_id="products-test",
+                )
+            }
+            return
         if prompt == "失败恢复测试":
             yield "失败前已经生成的建议。"
             raise RuntimeError("离线模型失败")
@@ -96,6 +125,9 @@ async def stream(messages, info):
                 )
             }
             return
+    if prompt == "商品卡片测试":
+        yield "你更倾向这家酒店，还是希望再比较一下？"
+        return
     if "已确认卡片" in str(prompt) or prompt == "确认方案":
         yield "交通住宿已确认，现在开始每日行程规划。"
         return
@@ -125,6 +157,9 @@ agent = Agent(
     output_type=[str, ToolOutput(present_trip, name="present_trip")],
     end_strategy="early",
 )
+
+
+agent.tool_plain(present_products)
 
 
 @agent.tool

@@ -479,3 +479,54 @@ def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path)
             )
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        None,
+        [],
+        [
+            {
+                "name": "酒店",
+                "description": "说明",
+                "purchase_url": "javascript:alert(1)",
+            }
+        ],
+    ],
+)
+def test_present_products_continues_conversation(configured, invalid):
+    from products import Product
+
+    requests = 0
+    product = {
+        "name": "测试酒店",
+        "description": "近景区",
+        "purchase_url": "https://example.com/hotel",
+    }
+
+    def model(messages, info):
+        nonlocal requests
+        requests += 1
+        assert "present_products" in {tool.name for tool in info.function_tools}
+        if requests == 1:
+            return ModelResponse(
+                parts=[
+                    TextPart("推荐这家酒店："),
+                    ToolCallPart(
+                        "present_products",
+                        {"products": [product] if invalid is None else invalid},
+                    ),
+                ]
+            )
+        result = next(p for p in messages[-1].parts if isinstance(p, ToolReturnPart))
+        if invalid is None:
+            assert result.content == [Product.model_validate(product)]
+        else:
+            assert result.outcome == "retried"
+        return ModelResponse(parts=[TextPart("你希望再比较一下吗？")])
+
+    agent = agent_module.create_agent()
+    with agent.override(model=FunctionModel(model)):
+        assert agent.run_sync("推荐酒店").output == "你希望再比较一下吗？"
+    assert requests == 2

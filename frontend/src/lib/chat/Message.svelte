@@ -4,6 +4,7 @@
 	import ToolActivity from './ToolActivity.svelte';
 	import Markdown from './Markdown.svelte';
 	import TripCard from './TripCard.svelte';
+	import ProductCard, { type Product } from './ProductCard.svelte';
 	let {
 		message,
 		detail,
@@ -15,6 +16,7 @@
 	type Group =
 		| { key: string; type: 'text'; text: string }
 		| { key: string; type: 'proposal'; trip: Trip; id: string }
+		| { key: string; type: 'products'; products: Product[] }
 		| { key: string; type: 'tools'; tools: Tool[] };
 	let groups = $derived.by(() => {
 		const result: Group[] = [];
@@ -30,7 +32,13 @@
 						id: part.toolCallId,
 						trip: 'trip' in input ? input.trip : input
 					});
-				} else {
+				} else if (name === 'present_products' && part.state === 'output-available') {
+					result.push({
+						key: part.toolCallId,
+						type: 'products',
+						products: part.output as Product[]
+					});
+				} else if (name !== 'present_products' || part.state === 'output-error') {
 					const previous = result.at(-1);
 					if (previous?.type === 'tools') previous.tools.push(part);
 					else result.push({ key: part.toolCallId, type: 'tools', tools: [part] });
@@ -70,6 +78,12 @@
 							disabled={busy}
 							onconfirm={() => onconfirm(group.id)}
 						/>
+					</section>
+				{:else if group.type === 'products'}
+					<section aria-label="推荐商品">
+						{#each group.products as product, i (i)}
+							<ProductCard {product} />
+						{/each}
 					</section>
 				{:else}
 					<ToolActivity tools={group.tools} />
