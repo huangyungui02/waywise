@@ -119,6 +119,10 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	await page.mouse.wheel(0, -50000);
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(80);
 	// 观察实际重放期间的主线程长任务，不依赖生产代码的计数或测试开关。
+	summary.outcome = 'completed';
+	const synchronized = page.waitForResponse((response) =>
+		new URL(response.url()).pathname === '/api/conversations/long-chat'
+	);
 	await page.evaluate(() => {
 		const tasks: number[] = [];
 		const observer = new PerformanceObserver((list) =>
@@ -128,8 +132,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 		Object.assign(window, { replayTasks: tasks });
 		window.dispatchEvent(new Event('test:finish-replay'));
 	});
-	summary.outcome = 'completed';
-	await expect(page.getByRole('button', { name: '停止', exact: true })).toHaveCount(0);
+	await synchronized;
 	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
 	await expect(page.getByText(text, { exact: true })).toHaveCount(1);
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(80);
