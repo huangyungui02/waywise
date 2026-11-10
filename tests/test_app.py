@@ -8,6 +8,8 @@ import httpx2
 import pytest
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import (
+    CompactionPart,
+    ModelRequest,
     ModelResponse,
     TextPart,
     ToolCallPart,
@@ -413,3 +415,67 @@ def test_bailian_native_tools_request(configured, monkeypatch, streaming):
     }
     assert "confirmed_trip" not in {t.get("name") for t in body["tools"]}
     assert "x-anthropic-billing-header" not in str(body)
+
+
+def test_auto_compaction_persists_and_resumes(configured, monkeypatch, tmp_path):
+    from pydantic_ai_harness.step_persistence.conversations import (
+        ConversationSummary,
+        SqliteConversationStore,
+    )
+
+    monkeypatch.setenv("COMPACT_MAX_TOKENS", "2000")
+    agent = agent_module.create_agent()
+    requests = []
+    summary = "上海往返杭州，两人预算3000元，酒店未购买，等待确认方案。"
+
+    async def respond(messages, info):
+        requests.append(messages)
+        return ModelResponse(parts=[TextPart(summary)])
+
+    async def stream(messages, info):
+        requests.append(messages)
+        yield summary
+
+    history = []
+    for i in range(20):
+        history.extend(
+            [
+                ModelRequest(parts=[UserPromptPart(f"需求{i}：" + "旅行偏好" * 100)]),
+                ModelResponse(parts=[TextPart("已了解需求。")]),
+            ]
+        )
+    history.append(ModelRequest(parts=[UserPromptPart("最近需求：酒店未购买")]))
+
+    async def run():
+        store = SqliteConversationStore(database=tmp_path / "history.db")
+        with agent.override(model=FunctionModel(respond, stream_function=stream)):
+            result = await agent.run("继续安排", message_history=history)
+            compacted = result.all_messages()
+            assert len(compacted) < len(history)
+            assert any(
+                isinstance(part, CompactionPart) and part.content == summary
+                for message in compacted
+                for part in message.parts
+            )
+            assert any(
+                isinstance(part, UserPromptPart)
+                and part.content == "最近需求：酒店未购买"
+                for message in compacted
+                for part in message.parts
+            )
+            await store.save(
+                summary=ConversationSummary(
+                    id="compact-test", title="杭州旅行", workspace=str(tmp_path)
+                ),
+                messages=compacted,
+            )
+            saved = await store.get(conversation_id="compact-test")
+            resumed = await agent.run("酒店还没买", message_history=saved.messages)
+            assert resumed.output == summary
+            assert any(
+                isinstance(part, CompactionPart) and part.content == summary
+                for message in requests[-1]
+                for part in message.parts
+            )
+
+    asyncio.run(run())

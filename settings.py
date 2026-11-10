@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     max_concurrent_runs: int = Field(default=4, ge=1)
     cors_origins: list[str] = Field(default_factory=list)
     travel_model: str = "qwen3.8-flash"
+    compact_max_tokens: int = Field(default=500_000, ge=1)
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_api_key: SecretStr = Field(
         validation_alias="DASHSCOPE_API_KEY", min_length=1

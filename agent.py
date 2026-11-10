@@ -11,6 +11,7 @@ from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Skills
+from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
 from settings import ROOT, Settings
 from trip import Trip, TripStore
@@ -47,6 +48,22 @@ def create_agent(settings: Settings | None = None) -> Agent[TripStore, str | Tri
         model_settings=OpenAIResponsesModelSettings(openai_reasoning_effort="medium"),
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
         capabilities=[
+            SummarizingCompaction(
+                max_tokens=settings.compact_max_tokens,
+                keep_messages=12,
+                model_settings=OpenAIResponsesModelSettings(
+                    openai_reasoning_effort="medium",
+                ),
+                event_stream_handler=drain_summary_events,
+                instructions=(
+                    "请把前面的旅行对话整理成一份摘要，让助手能接着帮用户规划。"
+                    "记清楚用户想去哪、什么时候去、几个人、预算和偏好，以及已经订好的交通和酒店。"
+                    "说明目前选了什么方案、用户是否确认、是否已经购买；同意方案不等于已经下单。"
+                    "如果用户后来改了主意，以最新说法为准。还没解决的问题和查到的信息来源链接也要留下。"
+                    "价格和余票等查询结果要保留查询时间，不能当作现在仍然有效。"
+                    "对话里没说清楚的事就写明不确定，不要自行补全。"
+                ),
+            ),
             WebSearch(),
             MCP(
                 "https://mcp.amap.com/mcp?"
