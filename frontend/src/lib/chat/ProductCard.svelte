@@ -37,10 +37,11 @@
 		<div class="col-start-2 row-start-1 min-w-0">
 			<Card.Header class="gap-2 px-0">
 				<Card.Title
-					class="text-[15px] leading-6 font-semibold break-words text-foreground sm:text-base"
+					title={product.name}
+					class="min-w-0 text-[15px] leading-6 font-semibold break-words text-foreground max-sm:truncate sm:text-base"
 					>{product.name}</Card.Title
 				>
-				<Card.Description class="text-sm leading-6 break-words"
+				<Card.Description class="text-sm leading-6 break-words max-sm:line-clamp-4"
 					>{product.description}</Card.Description
 				>
 			</Card.Header>
@@ -49,7 +50,8 @@
 			class="col-span-2 flex items-center justify-between gap-4 px-0 sm:col-span-1 sm:col-start-2"
 		>
 			{#if product.price}<p
-					class="min-w-0 text-sm leading-6 font-medium break-words text-primary tabular-nums"
+					title={product.price}
+					class="min-w-0 text-sm leading-6 font-medium break-words text-primary tabular-nums max-sm:truncate"
 				>
 					{product.price}
 				</p>

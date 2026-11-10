@@ -1122,3 +1122,60 @@ for (const mobile of [false, true]) {
 		).toBeVisible();
 	});
 }
+
+test('手机商品标题和价格单行省略，介绍最多四行', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const conversation = await (await page.request.post('/api/conversations')).json();
+	await page.route(`**/api/conversations/${conversation.id}`, async (route) => {
+		const response = await route.fetch();
+		const detail = await response.json();
+		detail.messages = [
+			{
+				id: 'long-product',
+				role: 'assistant',
+				parts: [
+					{
+						type: 'tool-present_products',
+						toolCallId: 'long-product',
+						state: 'output-available',
+						input: {},
+						output: [
+							{
+								name: '成都到四姑娘山景区直通车去程豪华大巴早班车',
+								description:
+									'可在春熙路集合发车，直达四姑娘山镇，指定日期及班次请在预订页面确认。'.repeat(8),
+								price: '¥45/人起（单程，豪华大巴7:00班，具体价格以预订页面为准）',
+								purchase_url: 'https://example.com/bus'
+							}
+						]
+					}
+				]
+			}
+		];
+		await route.fulfill({ response, json: detail });
+	});
+	await page.goto(`/chat/${conversation.id}`);
+	const card = page.getByRole('region', { name: '推荐商品' }).locator('[data-slot="card"]');
+	await expect(card).toBeVisible();
+	const layout = await card.evaluate((element) => {
+		const title = element.querySelector('[data-slot="card-title"]')!;
+		const description = element.querySelector('[data-slot="card-description"]')!;
+		const price = element.querySelector('[data-slot="card-footer"] p')!;
+		return {
+			titleHeight: title.clientHeight,
+			titleTruncated: title.scrollWidth > title.clientWidth,
+			descriptionHeight: description.clientHeight,
+			descriptionOverflow: description.scrollHeight > description.clientHeight,
+			priceHeight: price.clientHeight,
+			priceTruncated: price.scrollWidth > price.clientWidth
+		};
+	});
+	expect(layout.titleHeight).toBe(24);
+	expect(layout.titleTruncated).toBe(true);
+	expect(layout.descriptionHeight).toBe(96);
+	expect(layout.descriptionOverflow).toBe(true);
+	expect(layout.priceHeight).toBe(24);
+	expect(layout.priceTruncated).toBe(true);
+	await expect(card.getByRole('link', { name: '点击预订' })).toBeVisible();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
