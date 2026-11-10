@@ -23,10 +23,7 @@
 	{@attach scroll}
 	role="region"
 	aria-label="行程查询记录"
-	class={[
-		'my-1.5 flex flex-col gap-1 rounded-xl',
-		count > 1 && 'max-h-36 overflow-y-auto bg-muted/20 p-2.5'
-	]}
+	class="my-1.5 flex max-h-36 flex-col gap-1 overflow-y-auto rounded-xl bg-muted/20 p-2.5"
 >
 	{#each tools as part (part.toolCallId)}
 		{@const name = part.type === 'dynamic-tool' ? part.toolName : part.type.slice(5)}
@@ -42,6 +39,7 @@
 				/>
 			{/if}
 			<span>{names[name] ?? (name.startsWith('amap') ? '查询地点与路线' : name)}</span><span
+				class="sr-only"
 				>{part.state === 'output-error'
 					? '未完成'
 					: part.state === 'output-available'
