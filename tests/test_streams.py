@@ -13,7 +13,7 @@ from pydantic_ai.messages import (
     ThinkingPartDelta,
 )
 
-from app import streams
+from app.chat import streams
 
 
 @pytest.mark.parametrize("callback", [False, True])

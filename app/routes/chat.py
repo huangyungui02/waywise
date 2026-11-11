@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 
+from app.chat.response import stream_response
+from app.chat.workflows import Replies
 from app.dependencies import get_replies, require_conversation
-from app.replies import Replies
-from app.streams import stream_response
 
 router = APIRouter(
     prefix="/api/conversations", dependencies=[Depends(require_conversation)]

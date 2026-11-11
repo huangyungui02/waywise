@@ -20,11 +20,11 @@ from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, Functi
 from test_arrangements import ITINERARY, MULTI_ITINERARY
 
 from app.agent import present_arrangements, present_products
+from app.chat.streams import record_events
 from app.db.travel import TravelStore
 from app.main import create_app as create_backend
 from app.models.arrangements import TravelArrangements
 from app.settings import Settings
-from app.streams import record_events
 
 search_replies: dict[str, anyio.Event] = {}
 

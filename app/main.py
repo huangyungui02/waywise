@@ -14,8 +14,9 @@ from pydantic_ai import Agent
 from sqlalchemy.engine import URL
 
 from app.agent import create_agent
+from app.chat.retention import clean_workflow_history
+from app.chat.workflows import Replies
 from app.db.travel import TravelStore
-from app.replies import Replies
 from app.routes import chat, conversations
 from app.settings import ROOT, Settings
 
@@ -43,6 +44,17 @@ def create_app() -> FastAPI:
     async def lifespan(api: FastAPI):
         async with store:
             DBOS.launch()
+            await asyncio.to_thread(
+                DBOS.apply_schedules,
+                [
+                    {
+                        "schedule_name": "workflow-history-retention",
+                        "workflow_fn": clean_workflow_history,
+                        "schedule": "0 * * * *",
+                        "context": settings.dbos_retention_days,
+                    }
+                ],
+            )
             await DBOS.register_queue_async(
                 "conversations",
                 global_concurrency=settings.max_concurrent_runs,

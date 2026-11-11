@@ -18,11 +18,11 @@ from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Skills
 from pydantic_ai_harness.compaction import SummarizingCompaction, drain_summary_events
 
+from app.chat.streams import record_events
 from app.db.travel import TravelStore
 from app.models.arrangements import TravelArrangements
 from app.models.products import Product
 from app.settings import ROOT, Settings
-from app.streams import record_events
 
 
 @DBOS.step()

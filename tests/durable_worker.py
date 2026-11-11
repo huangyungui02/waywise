@@ -17,9 +17,9 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from starlette.testclient import TestClient
 from test_server import request
 
+from app.chat.streams import record_events
 from app.main import create_app
 from app.settings import Settings
-from app.streams import record_events
 
 folder = Path(sys.argv[1])
 

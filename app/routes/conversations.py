@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
 
+from app.chat.workflows import Replies
 from app.db.conversations import ConversationStore
 from app.db.tables import ConversationRow
 from app.db.travel import TravelStore
@@ -16,7 +17,6 @@ from app.dependencies import (
     require_conversation,
 )
 from app.models.arrangements import TravelArrangements
-from app.replies import Replies
 
 router = APIRouter(prefix="/api/conversations")
 

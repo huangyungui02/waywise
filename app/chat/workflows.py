@@ -21,7 +21,8 @@ from pydantic_ai.usage import UsageLimits
 
 from app.db.travel import TravelStore
 from app.models.arrangements import TravelArrangements
-from app.streams import STREAM, snapshot
+
+from .streams import STREAM, partial_messages, snapshot
 
 QUEUE = "conversations"
 ACTIVE = {"ENQUEUED", "PENDING", "DELAYED", "SUSPENDED"}
@@ -189,8 +190,6 @@ class Replies(DBOSConfiguredInstance):
 
     @DBOS.step()
     async def partial_messages(self, execution_id: str, baseline):
-        from app.streams import partial_messages
-
         return partial_messages(await snapshot(execution_id), baseline)
 
     @DBOS.workflow()

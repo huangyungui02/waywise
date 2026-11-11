@@ -4,10 +4,10 @@ from typing import cast
 
 from fastapi import Depends, HTTPException, Request
 
+from app.chat.workflows import Replies
 from app.db.conversations import ConversationStore
 from app.db.tables import ConversationRow
 from app.db.travel import TravelStore
-from app.replies import Replies
 
 
 async def get_replies(request: Request) -> Replies:

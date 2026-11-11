@@ -2,6 +2,19 @@
 
 应用使用单节点、单进程和两个 SQLite 文件。`TravelStore` 持有业务数据库，会话历史仍由官方 PydanticAI `ConversationStore` 和 SQLAlchemy AsyncSession 保存；DBOS 系统数据库持有工作流、步骤结果、通知和原生事件流。HTTP 请求和浏览器缓存都不是执行状态的所有者。
 
+## 代码组织
+
+聊天执行集中在 `app/chat/`，路由保留在 `app/routes/`，业务存储保留在 `app/db/`：
+
+| 模块 | 职责 |
+| --- | --- |
+| `workflows.py` | `Replies` 持有 Agent 与业务存储，提交、执行、停止回复并提供恢复查询；确认和删除共用同一队列 |
+| `streams.py` | 记录和读取原生持久事件，恢复中断时的模型消息 |
+| `response.py` | 订阅持久事件，交给官方 AI SDK 转换器生成 HTTP 流响应 |
+| `retention.py` | 定时清理过期执行历史 |
+
+Agent 只依赖事件记录接口；工作流依赖持久流；HTTP 响应订阅持久流，不参与执行调度。包的 `__init__.py` 不汇总导入，避免 Agent 加载事件记录接口时连带注册工作流。DBOS 持久化的类名、工作流名和步骤名保持稳定，因此这里保留 `Replies` 类名。
+
 ## 工作流
 
 `Replies` 是 DBOS 官方 `DBOSConfiguredInstance`，仅持有 Agent 和 TravelStore 两项运行资源，不维护任务、运行集合、锁、取消令牌或内存游标。
@@ -22,13 +35,15 @@
 
 事件存入生成子工作流的 DBOS stream。每次 handler 执行先写一个片段标记，包含 DBOS step ID、该次执行的 attempt ID 和服务端消息快照；随后追加 PydanticAI 原生事件。步骤重试使用新 attempt，重连快照只重放每一步最新 attempt，丢弃中断请求的旧输出。在线订阅检测到同一步的新 attempt 时，通过官方错误事件触发前端自动重新同步，避免拼接两次模型请求的 token。
 
-`app/streams.py` 将原生事件交给官方 `VercelAIEventStream.transform_stream()` 和 `streaming_response()`，不自行实现 AI SDK 流协议。HTTP 断开只关闭 DBOS reader，不取消工作流。停止或失败时，使用原生 part/delta 的 `apply` 方法重建最后未完成的模型响应，连同该步骤的消息快照保存到正式历史。流结束前等待父工作流完成保存，避免前端过早刷新。
+`app/chat/response.py` 将原生事件交给官方 `VercelAIEventStream.transform_stream()` 和 `streaming_response()`，不自行实现 AI SDK 流协议。HTTP 断开只关闭 DBOS reader，不取消工作流。停止或失败时，`app/chat/streams.py` 使用原生 part/delta 的 `apply` 方法重建最后未完成的模型响应，连同该步骤的消息快照保存到正式历史。流结束前等待父工作流完成保存，避免前端过早刷新。
 
 详情返回本轮初始消息、父工作流 ID 和持久流长度作为追平位置。浏览器从基线重放整条流，AI SDK 负责消息与工具状态。每个已消费的原生事件带 transient `data-progress`，位置为 DBOS offset，不再使用 Redis 时间戳或内存 cursor。恢复时在追平前保留 IndexedDB 预览，追平后切换到实时消息。
 
 ## 数据与部署边界
 
-默认业务数据在 `data/travel.db`，DBOS 数据在同目录的 `dbos.sqlite`；`DBOS_DATABASE_PATH` 可以显式修改后者。两个文件均需持久化，停服后一起备份和恢复。DBOS 流没有原 Redis 的短 TTL，目前随工作流记录保留。删除会话会删除业务记录并禁止通过会话 API 读取其流，DBOS 执行记录仍保留供恢复和诊断；这不等于物理擦除数据。
+默认业务数据在 `data/travel.db`，DBOS 数据在同目录的 `dbos.sqlite`；`DBOS_DATABASE_PATH` 可以显式修改后者。两个文件均需持久化，停服后一起备份和恢复。
+
+`DBOS_RETENTION_DAYS` 默认 7 天。DBOS 原生定时工作流每小时按根工作流的完成时间，分批删除过期终态流程及子流程、步骤结果、流和事件；活动根工作流及其检查点不清理。保留时间从完成时计算，实际删除最多延后一个清理周期，停服期间不执行。过期会话详情没有恢复检查点，直接返回业务库中的最终消息；聊天历史、商品和安排不受影响。删除会话只立即删除业务记录，其执行历史仍按此策略过期。SQLite 删除后复用空闲页，不自动执行阻塞写入的 `VACUUM`，因此文件不一定立即变小。
 
 业务写入使用稳定的方案 ID、商品链接和完整消息快照保持重放幂等，DBOS 并不会把独立业务事务和系统数据库提交变成分布式事务。外部模型或工具在步骤未记成功时可能重复请求；不依赖外部调用恰好一次，不执行支付、下单等不可逆操作。
 

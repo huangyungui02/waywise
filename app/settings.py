@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     database_path: Path = ROOT / "data" / "travel.db"
     dbos_database_path: Path | None = None
+    dbos_retention_days: int = Field(default=7, ge=1)
     max_concurrent_runs: int = Field(default=4, ge=1)
     cors_origins: list[str] = Field(default_factory=list)
     travel_model: str = "qwen3.8-flash"

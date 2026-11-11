@@ -25,7 +25,7 @@ def app_factory(monkeypatch):
                 from pydantic_ai.capabilities import CombinedCapability
                 from pydantic_ai.durable_exec.dbos import DBOSDurability
 
-                from app.streams import record_events
+                from app.chat.streams import record_events
 
                 # 使用官方 FunctionModel；在 worker 启动前注册实际测试模型和工具。
                 model = agent._get_model_outside_run()
