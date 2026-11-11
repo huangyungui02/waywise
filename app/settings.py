@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     database_path: Path = ROOT / "data" / "travel.db"
-    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
+    dbos_database_path: Path | None = None
     max_concurrent_runs: int = Field(default=4, ge=1)
     cors_origins: list[str] = Field(default_factory=list)
     travel_model: str = "qwen3.8-flash"

@@ -69,6 +69,18 @@ def configured(monkeypatch):
             return tools
 
     monkeypatch.setattr(agent_module, "MCP", lambda *args, **kwargs: LocalMaps())
+    from pydantic_ai.durable_exec.dbos import DBOSDurability
+
+    create_agent = agent_module.create_agent
+
+    def offline_agent(*args, **kwargs):
+        agent = create_agent(*args, **kwargs)
+        agent._root_capability = agent.root_capability.visit_and_replace(
+            lambda cap: None if isinstance(cap, DBOSDurability) else cap
+        )
+        return agent
+
+    monkeypatch.setattr(agent_module, "create_agent", offline_agent)
 
 
 def test_missing_map_key(monkeypatch):

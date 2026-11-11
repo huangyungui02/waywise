@@ -8,9 +8,11 @@ from typing import Annotated
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from dbos import DBOS
 from pydantic import Field
 from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from pydantic_ai.capabilities import MCP, LocalWorkspace, WebSearch
+from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai_harness import FileSystem, Skills
@@ -20,8 +22,10 @@ from app.db.travel import TravelStore
 from app.models.arrangements import TravelArrangements
 from app.models.products import Product
 from app.settings import ROOT, Settings
+from app.streams import record_events
 
 
+@DBOS.step()
 async def present_products(
     ctx: RunContext[TravelStore],
     products: Annotated[list[Product], Field(min_length=1)],
@@ -38,6 +42,7 @@ async def present_products(
     return products
 
 
+@DBOS.step()
 async def present_arrangements(
     ctx: RunContext[TravelStore], arrangements: TravelArrangements
 ) -> TravelArrangements:
@@ -80,6 +85,12 @@ def create_agent(
         .with_name("instructions.md")
         .read_text(encoding="utf-8"),
         capabilities=[
+            DBOSDurability(
+                event_stream_handler=record_events,
+                model_step_config={"preemptible": True},
+                mcp_step_config={"preemptible": True},
+                parallel_execution_mode="sequential",
+            ),
             SummarizingCompaction(
                 max_tokens=settings.compact_max_tokens,
                 keep_messages=12,
@@ -115,6 +126,7 @@ def create_agent(
     agent.tool(sequential=True)(present_products)
 
     @agent.tool_plain
+    @DBOS.step()
     def call_flyai(args: list[str]) -> dict:
         """根据飞猪 Skill 执行旅行查询，返回退出码、原始标准输出和标准错误。
 
@@ -170,6 +182,7 @@ def create_agent(
         }
 
     @agent.tool_plain
+    @DBOS.step()
     def current_time() -> str:
         """了解今天的北京时间。用户提到“下周”等相对日期、需要核对出行日期或注明查询时间时使用。
 
@@ -178,6 +191,7 @@ def create_agent(
         return f"当前北京时间：{datetime.now(ZoneInfo('Asia/Shanghai')):%Y-%m-%d %A %H:%M}。"
 
     @agent.tool
+    @DBOS.step()
     async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
         """用户明确同意当前展示的方案后，确认并保存交通和住宿，再继续每日规划。
 

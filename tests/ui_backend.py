@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import anyio
+from dbos import DBOS
 from pydantic_ai import Agent, RunContext, ToolOutput
+from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.messages import (
     ModelResponse,
     NativeToolCallPart,
@@ -22,6 +24,7 @@ from app.db.travel import TravelStore
 from app.main import create_app as create_backend
 from app.models.arrangements import TravelArrangements
 from app.settings import Settings
+from app.streams import record_events
 
 search_replies: dict[str, anyio.Event] = {}
 
@@ -176,6 +179,14 @@ agent = Agent(
     deps_type=TravelStore,
     output_type=[str, ToolOutput(present_arrangements, name="present_arrangements")],
     end_strategy="early",
+    name="offline-ui",
+    capabilities=[
+        DBOSDurability(
+            event_stream_handler=record_events,
+            model_step_config={"preemptible": True},
+            parallel_execution_mode="sequential",
+        )
+    ],
 )
 
 
@@ -183,6 +194,7 @@ agent.tool(present_products)
 
 
 @agent.tool
+@DBOS.step()
 async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
     """浏览器测试的确认入口；使用真实 SQLite 确认逻辑。"""
     assert ctx.conversation_id is not None
@@ -194,6 +206,7 @@ async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
 
 
 @agent.tool_plain
+@DBOS.step()
 def current_time() -> str:
     """浏览器测试的本地时间工具。"""
     return "2026-11-06 10:00"
@@ -219,7 +232,7 @@ def create_app():
             ]
         )
 
-    agent.model = FunctionModel(title, stream_function=stream)
+    agent.model.function = title
     settings = Settings(
         _env_file=None,
         DASHSCOPE_API_KEY="test-key",

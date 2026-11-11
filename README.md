@@ -30,13 +30,7 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 | `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 Web 服务类型 Key |
 | `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
 | `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`），需支持 Responses 接口、内置搜索和工具调用 |
-| `REDIS_URL` | 否 | 本地默认 `redis://localhost:6379/0`；Compose 自动使用内网 Redis |
-| `REDIS_STREAM_MAX_RUN` | 否 | SDK 运行最长时间，默认 `3600` 秒，最多 `86400` 秒 |
-| `REDIS_STREAM_DONE_TTL` | 否 | SDK 已结束流的保留时间，默认 `120` 秒，且不超过运行剩余寿命 |
 | `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
-
-Redis 相关配置均可从 `.env` 省略；Compose 自动连接自带的 Redis，
-`REDIS_URL` 在 Compose 中由 `compose.yaml` 覆盖，流寿命配置省略时使用上表默认值。
 
 Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
 已有飞猪凭据请通过 `FLYAI_API_KEY` 配置。模型、搜索及其他服务费用以提供方为准。
@@ -64,11 +58,8 @@ docker compose down
 重建镜像或执行上述停止命令会保留数据。请勿使用 `docker compose down -v`，它会删除数据卷。
 Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发使用。
 
-Compose 同时启动 Redis，应用等待其健康检查通过后启动。Redis 使用 `redis-data` 卷和 AOF，
-容器间通过 `redis:6379` 连接；宿主机仅在 `127.0.0.1:6379` 提供访问。
-Redis 保存临时回复事件；长期历史和行程仍在 SQLite 中。流的寿命由 SDK 原生配置控制，到期后读取 SQLite 历史。
-当前使用 `fastapi-redis-sdk` 的 `feature/resumable-streams` 分支，固定 commit 为 `fd7f483022c9b97ae437e972e2b84ea54b3034e6`。
-该功能要求 Redis ≥ 8.6.2，推荐 ≥ 8.6.6；Compose 固定使用 Redis 8.8.0。
+DBOS 在同一进程内运行，无需额外服务。工作流、步骤结果和回复事件保存在同一数据卷的
+`/app/data/dbos.sqlite`；备份和迁移时请同时保留两个数据库，不能只复制 `travel.db`。
 
 备份时先停止服务，再复制整个数据目录：
 
@@ -143,11 +134,13 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 
 ## 当前限制
 
-- 暂不支持中转、多目的地或非酒店住宿；凌晨入住等特殊安排需额外核对。
+- 暂不支持非酒店住宿；凌晨入住等特殊安排需额外核对。
 - 价格、余票、房态和退改规则以预订页面为准，售票期外可能无法查询。
-- 关闭页面、刷新或切换会话后，只要后端服务仍在运行，回复会继续生成；返回会话可查看最新输出并接收后续内容。点击“停止”才会取消生成，并保存已生成的部分回复。
+- 关闭页面、刷新或切换会话后，回复会继续生成；返回会话可查看最新输出并接收后续内容。点击“停止”才会取消生成，并保存已生成的部分回复。
 - 浏览器使用 IndexedDB 缓存已读取的消息以便快速预览；同步期间会显示提示，最终内容以服务端为准。清空浏览器缓存不会删除服务端历史。
-- 后台运行使用单个后端进程，默认最多同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整。服务重启会中断未完成的回复，保留已保存的会话消息和行程，本轮未提交的中间消息可能丢失，不会自动重跑工具；请勿配置多个后端 worker 或实例共享该数据库。
+- 当前部署使用单节点、单后端进程和 SQLite。DBOS 默认同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整，超出后排队。同一版本服务重启后会恢复未完成的工作流；已完成的模型和工具步骤不重跑，中断中的步骤可能重新执行并产生额外调用费用。
+- 未完成模型请求的部分输出会在恢复时被替换为重试结果。DBOS 不保证外部接口恰好调用一次；本项目不执行代下单与支付。
+- 更新代码会改变 DBOS 应用版本；部署新版本前请等待当前回复完成。SQLite 文件必须保存在持久化磁盘，当前不支持多副本部署。
 - 尚未提供用户登录和多用户数据隔离，适合本地个人使用。
 - Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
@@ -168,16 +161,10 @@ pnpm --dir frontend install --frozen-lockfile
 ```
 
 后端位于 `app/`：`main.py` 负责应用装配，`routes/` 提供 HTTP 接口，`agent.py` 定义 Agent 和工具，
-`replies.py` 管理回复执行和恢复，`streams.py` 桥接流响应，`db/conversations.py` 处理会话历史、标题和重启收尾，`settings.py` 管理配置，`models/` 定义业务模型，`db/` 定义数据库表和读写操作。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
+`replies.py` 定义 DBOS 工作流，`streams.py` 桥接持久事件与官方流协议，`db/conversations.py` 处理会话历史与标题，`settings.py` 管理配置，`models/` 定义业务模型，`db/` 定义数据库表和读写操作。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
 官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
 
-先确保本地 Redis 在 `localhost:6379` 运行；也可以只启动 Compose 中的 Redis：
-
-```bash
-docker compose up -d redis
-```
-
-已有 Redis 可通过 `.env` 中的 `REDIS_URL` 指定地址。然后分别在两个终端启动后端和前端：
+分别在两个终端启动后端和前端：
 
 ```bash
 uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 7932
@@ -202,13 +189,7 @@ pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 ```
 
-Python 默认使用 SDK 边界的本地替身和 FakeRedis，不依赖本地 Redis。
-浏览器测试使用真实 SDK 和本地 `localhost:6379` Redis，运行前执行 `docker compose up -d redis`。
-两者都不调用真实模型或旅游服务。
-需要验证真实 Redis Streams 时，可显式运行隔离键测试（不会清空 Redis）：
-
-```bash
-uv run python -m pytest -q tests/test_replies.py --redis-url redis://localhost:6379/0
-```
+Python 和浏览器测试均使用真实 DBOS、SQLite 与官方 FunctionModel/TestModel，不需要 Redis，
+不调用真实模型或旅游服务。Python 测试包含独立进程被强制终止后的恢复验证。
 
 实际模型、地图和飞猪服务需要另行配置凭据并验证。

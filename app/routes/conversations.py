@@ -5,7 +5,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
-from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 
 from app.db.conversations import ConversationStore
 from app.db.tables import ConversationRow
@@ -42,8 +41,12 @@ class ConversationTitle(BaseModel):
 @router.get("", response_model=list[ConversationSummary])
 async def list_conversations(
     conversations: ConversationStore = Depends(get_conversations),
+    replies: Replies = Depends(get_replies),
 ):
-    return await conversations.list()
+    records = await conversations.list()
+    for record in records:
+        record.outcome = await replies.outcome(record.id, record.outcome)
+    return records
 
 
 @router.post("", status_code=201, response_model=ConversationSummary)
@@ -72,22 +75,17 @@ async def get_conversation(
     conversations: ConversationStore = Depends(get_conversations),
     store: TravelStore = Depends(get_store),
 ):
-    if reply := replies.running.get(conversation_id):
-        await reply.ready.wait()
-        record = await conversations.get(conversation_id)
     conversation = await conversations.load(conversation_id)
     if conversation is None:
         raise HTTPException(404, "会话不存在")
     state = await store.arrangements.get_state(conversation_id)
     checkpoint = await replies.recovery(conversation_id)
+    record.outcome = await replies.outcome(conversation_id, record.outcome)
     return {
         "products": await store.products.list(conversation_id),
         "recovery": checkpoint,
         "summary": ConversationSummary.model_validate(record),
-        "messages": [
-            m.model_dump(mode="json", by_alias=True, exclude_none=True)
-            for m in VercelAIAdapter.dump_messages(conversation.messages, sdk_version=6)
-        ],
+        "messages": replies.ui_messages(conversation.messages),
         **{
             key: value.model_dump(mode="json")
             if isinstance(value, TravelArrangements)
@@ -119,18 +117,12 @@ async def confirm_proposal(
     conversation_id: str,
     proposal_id: str,
     replies: Replies = Depends(get_replies),
-    store: TravelStore = Depends(get_store),
 ):
-    if conversation_id in replies.busy:
-        raise HTTPException(409, "请等待当前回复结束后确认")
-    replies.busy.add(conversation_id)
-    try:
-        arrangements = await store.arrangements.confirm(conversation_id, proposal_id)
-    except ValueError as error:
-        raise HTTPException(409, str(error)) from None
-    finally:
-        replies.busy.discard(conversation_id)
-    return arrangements.model_dump(mode="json")
+    handle = await replies.submit(conversation_id, "confirm", proposal_id)
+    result = await handle.get_result()
+    if "error" in result:
+        raise HTTPException(409, result["error"])
+    return result
 
 
 @router.delete(
@@ -139,13 +131,6 @@ async def confirm_proposal(
 async def delete_conversation(
     conversation_id: str,
     replies: Replies = Depends(get_replies),
-    store: TravelStore = Depends(get_store),
 ):
-    if conversation_id in replies.busy:
-        raise HTTPException(409, "请先停止当前回复，再删除会话")
-    replies.busy.add(conversation_id)
-    try:
-        await store.delete_conversation(conversation_id)
-        await replies.clear_recovery(conversation_id)
-    finally:
-        replies.busy.discard(conversation_id)
+    handle = await replies.submit(conversation_id, "delete", "")
+    await handle.get_result()

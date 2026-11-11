@@ -42,13 +42,23 @@ export class Conversation {
 				if (this.target) {
 					const { runId, cursor } = part.data as { runId: string; cursor: string };
 					if (runId !== this.target.run_id || this.target.cursor === null) return;
-					const [time, sequence] = cursor.split('-').map(BigInt);
-					const [targetTime, targetSequence] = this.target.cursor.split('-').map(BigInt);
-					if (time < targetTime || (time === targetTime && sequence < targetSequence)) return;
+					if (Number(cursor) < Number(this.target.cursor)) return;
 					this.target = null;
 				}
 				this.recovering = false;
 				this.timer ??= setTimeout(() => this.save(), 250);
+			},
+			onError: (error) => {
+				if (error.message === '回复正在恢复，请重新同步') {
+					queueMicrotask(() => void this.synchronize());
+					return;
+				}
+				this.target = null;
+				this.recovering = false;
+				void this.refresh()
+					.then(() => this.save())
+					.catch(() => {});
+				changed();
 			},
 			onFinish: ({ isAbort, isDisconnect }) => {
 				if (isAbort || isDisconnect) return;

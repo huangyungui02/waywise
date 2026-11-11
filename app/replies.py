@@ -1,215 +1,234 @@
-"""回复启动、停止、并发限制与单轮执行；后台任务由 Redis SDK 持有。"""
+"""一轮旅行咨询由 DBOS 工作流持有，HTTP 请求只提交和订阅。"""
 
-import asyncio
-import json
-from dataclasses import dataclass, field
-from functools import partial
 from uuid import uuid4
 
-import anyio
 import logfire
+from dbos import (
+    DBOS,
+    DBOSConfiguredInstance,
+    PropagateOtelContext,
+    SetEnqueueOptions,
+    SetWorkflowID,
+    error,
+)
 from fastapi import HTTPException
-from pydantic_ai import Agent, AgentRunResult, CancellationToken, Conversation
-from pydantic_ai.exceptions import RunCancelled
+from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
+from pydantic_ai.run import AgentRunResultEvent
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage, TextUIPart
-from pydantic_ai.ui.vercel_ai.response_types import DoneChunk
 from pydantic_ai.usage import UsageLimits
-from redis.asyncio import Redis
-from redis_fastapi import StreamBackend, StreamWriter
-from redis_fastapi.config import get_settings as redis_settings
-from redis_fastapi.exceptions import StreamNotFound
 
 from app.db.travel import TravelStore
 from app.models.arrangements import TravelArrangements
+from app.streams import STREAM, snapshot
+
+QUEUE = "conversations"
+ACTIVE = {"ENQUEUED", "PENDING", "DELAYED", "SUSPENDED"}
 
 
-@dataclass
-class RunningReply:
-    adapter: VercelAIAdapter[TravelStore, str | TravelArrangements]
-    run_id: str = field(default_factory=lambda: str(uuid4()))
-    cursor: str = "0-0"
-    cancellation: CancellationToken = field(default_factory=CancellationToken)
-    ready: anyio.Event = field(default_factory=anyio.Event)
-    task: asyncio.Task | None = None
+@DBOS.dbos_class()
+class Replies(DBOSConfiguredInstance):
+    def __init__(
+        self, agent: Agent[TravelStore, str | TravelArrangements], store: TravelStore
+    ):
+        super().__init__("travel-agent")
+        self.agent = agent
+        self.store = store
 
+    async def latest(self, conversation_id: str):
+        runs = await DBOS.list_workflows_async(
+            workflow_id_prefix=f"{conversation_id}/reply/",
+            name="Replies.execute",
+            sort_desc=True,
+            limit=1,
+            load_output=True,
+        )
+        return runs[0] if runs else None
 
-@dataclass
-class Replies:
-    agent: Agent[TravelStore, str | TravelArrangements]
-    store: TravelStore
-    redis: Redis
-    streams: StreamBackend
-    max_concurrent_runs: int
-    busy: set[str] = field(default_factory=set, init=False)
-    running: dict[str, RunningReply] = field(default_factory=dict, init=False)
-
-    @staticmethod
-    def recovery_key(conversation_id: str) -> str:
-        return f"travel-agent:recovery:{conversation_id}"
+    async def outcome(self, conversation_id: str, fallback: str):
+        run = await self.latest(conversation_id)
+        if run is None:
+            return "cancelled" if fallback == "running" else fallback
+        if run.status == "SUCCESS":
+            return run.output
+        return {
+            "ENQUEUED": "queued",
+            "PENDING": "running",
+            "CANCELLED": "cancelled",
+        }.get(run.status, "failed")
 
     async def recovery(self, conversation_id: str):
-        data = await self.redis.get(self.recovery_key(conversation_id))
-        if data is None:
+        run = await self.latest(conversation_id)
+        if run is None:
             return None
-        saved = json.loads(data)
-        try:
-            reader = await self.streams.follow(saved["run_id"], scope=conversation_id)
-            await reader.aclose()
-        except StreamNotFound:
-            return None
-        reply = self.running.get(conversation_id)
-        return {**saved, "cursor": reply.cursor if reply else None}
+        baseline = await DBOS.get_event_async(
+            run.workflow_id, "baseline", timeout_seconds=0
+        )
+        if baseline is None:
+            # 尚未执行的排队回复也能立即显示用户输入。
+            saved = await self.store.conversations.load(conversation_id)
+            body = SubmitMessage.model_validate_json(run.input["args"][2])
+            adapter = VercelAIAdapter(self.agent, body, sdk_version=6)
+            baseline = self.ui_messages([*saved.messages, *adapter.messages])
+        records = await snapshot(f"{run.workflow_id}/generation")
+        return {
+            "run_id": run.workflow_id,
+            "cursor": str(len(records)) if run.status in ACTIVE else None,
+            "messages": baseline,
+        }
 
     @staticmethod
-    def _user_text(body: SubmitMessage) -> str:
+    def ui_messages(messages):
+        return [
+            message.model_dump(mode="json", by_alias=True, exclude_none=True)
+            for message in VercelAIAdapter.dump_messages(messages, sdk_version=6)
+        ]
+
+    async def submit(self, conversation_id, operation, payload):
+        try:
+            with (
+                PropagateOtelContext(),
+                SetWorkflowID(f"{conversation_id}/{operation}/{uuid4()}"),
+                SetEnqueueOptions(deduplication_id=conversation_id),
+            ):
+                return await DBOS.enqueue_workflow_async(
+                    QUEUE, self.execute, conversation_id, operation, payload
+                )
+        except error.DBOSQueueDeduplicatedError:
+            raise HTTPException(409, "当前会话正在处理，请稍候") from None
+
+    async def start(self, conversation_id: str, body: SubmitMessage):
         if not body.messages or body.messages[-1].role != "user":
             raise HTTPException(422, "请发送一条文本消息")
         latest = body.messages[-1]
         texts = [part.text for part in latest.parts if isinstance(part, TextUIPart)]
-        text = "\n".join(texts).strip()
-        if len(texts) != len(latest.parts) or not text:
+        if len(texts) != len(latest.parts) or not "\n".join(texts).strip():
             raise HTTPException(422, "请发送一条非空文本消息")
-        return text
-
-    async def start(self, conversation_id: str, body: SubmitMessage) -> RunningReply:
-        if conversation_id in self.busy:
-            raise HTTPException(409, "当前会话正在回复，请稍候")
-        if len(self.running) >= self.max_concurrent_runs:
-            raise HTTPException(429, "同时进行的旅行咨询较多，请稍后再试")
-        text = self._user_text(body)
-        # 只接受本轮用户消息，历史由服务端和官方适配器合并。
         body.messages = body.messages[-1:]
-        adapter = VercelAIAdapter(
-            self.agent, body, sdk_version=6, manage_message_history="server"
-        )
-        reply = RunningReply(adapter)
-        adapter.server_message_id = reply.run_id
-        self.busy.add(conversation_id)
-        self.running[conversation_id] = reply
-        try:
-            # 取得执行名额后重读，避免等待 SQLite 时上一轮刚好完成而使用旧历史。
-            saved = await self.store.conversations.load(conversation_id)
-            if saved is None:
-                raise HTTPException(404, "会话不存在")
-            if not saved.messages:
-                await self.store.conversations.rename(conversation_id, text[:40])
-            history = list(saved.messages)
-            messages = [*history, *adapter.messages]
-            writer = await self.streams.open(
-                scope=conversation_id, stream_id=reply.run_id
-            )
-            await self.store.conversations.save_messages(saved, messages, "running")
-            await self.redis.set(
-                self.recovery_key(conversation_id),
-                json.dumps(
-                    {
-                        "run_id": reply.run_id,
-                        "messages": [
-                            m.model_dump(mode="json", by_alias=True, exclude_none=True)
-                            for m in VercelAIAdapter.dump_messages(
-                                messages, sdk_version=6
-                            )
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-                ex=redis_settings().stream_max_run,
-            )
-            execution = _ReplyExecution(
-                reply=reply,
-                store=self.store,
-                conversation=saved,
-                messages=messages,
-                history=history,
-                first_message=text if not history else None,
-            )
-            reply.task = self.streams.spawn(
-                writer, partial(self._produce, execution=execution)
-            )
-        except BaseException:
-            self._release(conversation_id, reply)
-            raise
-        reply.ready.set()
-        return reply
+        handle = await self.submit(conversation_id, "reply", body.model_dump_json())
+        return handle.workflow_id
 
     async def stop(self, conversation_id: str):
-        if reply := self.running.get(conversation_id):
-            reply.cancellation.cancel()
-            if reply.task is not None:
-                await reply.task
+        run = await self.latest(conversation_id)
+        if run is None or run.status not in ACTIVE:
+            return
+        with SetWorkflowID(f"{run.workflow_id}/stop"):
+            handle = await DBOS.start_workflow_async(self.cancel_reply, run.workflow_id)
+        await handle.get_result()
 
-    def _release(self, conversation_id: str, reply: RunningReply):
-        self.running.pop(conversation_id, None)
-        self.busy.discard(conversation_id)
-        reply.ready.set()
-
-    async def _produce(self, writer: StreamWriter, *, execution: "_ReplyExecution"):
-        try:
-            outcome = await execution.produce(writer)
-        finally:
-            self._release(execution.conversation.conversation_id, execution.reply)
-        await writer.finish("result", {"outcome": outcome})
-
-    async def clear_recovery(self, conversation_id: str):
-        await self.redis.delete(self.recovery_key(conversation_id))
-
-
-@dataclass
-class _ReplyExecution:
-    """一轮回复的历史、保存结果和官方适配器回调。"""
-
-    reply: RunningReply
-    store: TravelStore
-    conversation: Conversation
-    messages: list[ModelMessage]
-    history: list[ModelMessage]
-    first_message: str | None
-    outcome: str | None = field(default=None, init=False)
-
-    async def _save(self, outcome: str, messages: list[ModelMessage]):
-        await self.store.conversations.save_messages(
-            self.conversation, messages, outcome
+    @DBOS.workflow()
+    async def cancel_reply(self, run_id: str):
+        await DBOS.send_async(run_id, True, topic="stop")
+        run = await DBOS.get_workflow_status_async(run_id)
+        if run.status == "ENQUEUED":
+            await DBOS.resume_workflow_async(run_id)
+        execution = await DBOS.get_event_async(
+            run_id, "execution", timeout_seconds=3600
         )
-        self.outcome = outcome
+        if execution:
+            await DBOS.cancel_workflow_async(execution)
+        handle = await DBOS.retrieve_workflow_async(run_id)
+        await handle.get_result()
 
-    async def completed(self, result: AgentRunResult):
-        await self._save("completed", result.all_messages())
-        if self.first_message is not None:
-            model = self.reply.adapter.agent.model
-            assert model is not None
-            await self.store.conversations.generate_title(
-                model, self.conversation.conversation_id, self.first_message
-            )
+    @DBOS.step()
+    async def prepare(self, conversation_id: str, payload: str):
+        saved = await self.store.conversations.load(conversation_id)
+        if saved is None:
+            raise ValueError("会话不存在")
+        body = SubmitMessage.model_validate_json(payload)
+        adapter = VercelAIAdapter(self.agent, body, sdk_version=6)
+        return saved.messages, adapter.messages
 
-    async def cancelled(self, result: RunCancelled):
-        await self._save("cancelled", result.all_messages())
+    @DBOS.step()
+    async def save(
+        self, conversation_id: str, messages: list[ModelMessage], outcome: str
+    ):
+        # 重读后保存：即使业务提交后进程退出、DBOS 尚未记下步骤结果，重放也不会重复追加。
+        saved = await self.store.conversations.load(conversation_id)
+        if saved is not None:
+            await self.store.conversations.save_messages(saved, messages, outcome)
 
-    async def produce(self, writer: StreamWriter):
-        interrupted = False
+    @DBOS.step()
+    async def rename_initial(self, conversation_id, incoming):
+        text = "\n".join(str(p.content) for m in incoming for p in m.parts)
+        await self.store.conversations.rename(conversation_id, text[:40])
+
+    @DBOS.step()
+    async def title(self, conversation_id, text):
+        await self.store.conversations.generate_title(
+            self.agent.model, conversation_id, text
+        )
+
+    @DBOS.step()
+    async def mutate(self, conversation_id, operation, payload):
+        if operation == "delete":
+            await self.store.delete_conversation(conversation_id)
+            return None
         try:
-            async for chunk in self.reply.adapter.run_stream(
-                message_history=self.history,
-                conversation_id=self.conversation.conversation_id,
-                run_id=self.reply.run_id,
-                deps=self.store,
-                usage_limits=UsageLimits(request_limit=None),
-                cancellation_token=self.reply.cancellation,
-                on_complete=self.completed,
-                on_cancel=self.cancelled,
-            ):
-                if not isinstance(chunk, DoneChunk):
-                    self.reply.cursor = await writer.append("ui", chunk.encode(6))
-        except anyio.get_cancelled_exc_class():
-            interrupted = True
+            result = await self.store.arrangements.confirm(conversation_id, payload)
+            return result.model_dump(mode="json")
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+    @DBOS.workflow()
+    async def generate(
+        self, conversation_id: str, messages: list[ModelMessage], run_id: str
+    ):
+        result = await self.agent.run(
+            message_history=messages,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            deps=self.store,
+            usage_limits=UsageLimits(request_limit=None),
+        )
+        await DBOS.write_stream_async(
+            STREAM, ("result", "result", AgentRunResultEvent(result))
+        )
+        return result.all_messages()
+
+    @DBOS.step()
+    async def partial_messages(self, execution_id: str, baseline):
+        from app.streams import partial_messages
+
+        return partial_messages(await snapshot(execution_id), baseline)
+
+    @DBOS.workflow()
+    async def execute(self, conversation_id: str, operation: str, payload: str):
+        if operation != "reply":
+            return await self.mutate(conversation_id, operation, payload)
+        try:
+            history, incoming = await self.prepare(conversation_id, payload)
+            messages = [*history, *incoming]
+            await DBOS.set_event_async("baseline", self.ui_messages(messages))
+            await self.save(conversation_id, messages, "running")
+            if not history:
+                await self.rename_initial(conversation_id, incoming)
+        except Exception:
+            await DBOS.set_event_async("execution", "")
             raise
-        except Exception:  # noqa: BLE001 — 后台任务统一记录失败并保存本轮状态。
-            logfire.exception("后台回复执行失败")
-        finally:
-            with anyio.CancelScope(shield=True):
-                if self.outcome is None:
-                    await self._save(
-                        "cancelled" if interrupted else "failed", self.messages
-                    )
-        return self.outcome
+        if await DBOS.recv_async(topic="stop", timeout_seconds=0):
+            await DBOS.set_event_async("execution", "")
+            await self.save(conversation_id, messages, "cancelled")
+            return "cancelled"
+        with PropagateOtelContext(), SetWorkflowID(f"{DBOS.workflow_id}/generation"):
+            execution = await DBOS.start_workflow_async(
+                self.generate, conversation_id, messages, DBOS.workflow_id
+            )
+        await DBOS.set_event_async("execution", execution.workflow_id)
+        try:
+            completed = await execution.get_result()
+        except error.DBOSAwaitedWorkflowCancelledError:
+            partial = await self.partial_messages(execution.workflow_id, messages)
+            await self.save(conversation_id, partial, "cancelled")
+            return "cancelled"
+        except Exception:
+            logfire.exception("旅行回复执行失败")
+            partial = await self.partial_messages(execution.workflow_id, messages)
+            await self.save(conversation_id, partial, "failed")
+            raise
+        await self.save(conversation_id, completed, "completed")
+        if not history:
+            text = "\n".join(str(p.content) for m in incoming for p in m.parts)
+            await self.title(conversation_id, text)
+        return "completed"

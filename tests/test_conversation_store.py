@@ -107,22 +107,22 @@ async def test_stale_write_and_missing_fork_head_roll_back(tmp_path, store_facto
 
 
 @pytest.mark.anyio
-async def test_rename_and_recover_status_without_rewriting_history(
-    tmp_path, store_factory
-):
+async def test_rename_and_save_without_rewriting_history(tmp_path, store_factory):
     conversations = (await store_factory(tmp_path / "titles.db")).conversations
     created = await conversations.create()
     conversation = await conversations.load(created.id)
     await conversations.rename(created.id, "自己起的名字")
     await conversations.save_messages(conversation, [message("杭州")], "running")
     record = await conversations.read_record(created.id)
-    await conversations.recover_interrupted_runs()
+    await conversations.save_messages(
+        await conversations.load(created.id), [message("杭州")], "completed"
+    )
     recovered = await conversations.load(created.id)
     metadata = await conversations.get(created.id)
     assert metadata.title == "自己起的名字"
-    assert metadata.outcome == "cancelled"
+    assert metadata.outcome == "completed"
     assert recovered.messages == [message("杭州")]
-    assert await conversations.read_record(created.id) == record
+    assert (await conversations.read_record(created.id)).head_id == record.head_id
 
 
 @pytest.mark.anyio

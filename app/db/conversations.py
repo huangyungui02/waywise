@@ -179,16 +179,6 @@ class ConversationStore(BaseConversationStore):
             )
             await session.commit()
 
-    async def recover_interrupted_runs(self):
-        """启动时收尾旧进程留下的运行，不重新执行模型或工具。"""
-        async with AsyncSession(self.engine) as session:
-            await session.execute(
-                update(ConversationRow)
-                .where(ConversationRow.outcome == "running")
-                .values(outcome="cancelled")
-            )
-            await session.commit()
-
     async def generate_title(
         self,
         model: Model | str,

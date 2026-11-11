@@ -28,6 +28,13 @@ class ArrangementStore:
     ) -> TravelArrangements:
         async with AsyncSession(self.engine) as session:
             record = await session.get(ArrangementsRecord, conversation_id)
+            if (
+                record is not None
+                and record.pending_data is None
+                and record.data is not None
+                and (proposal_id is None or record.confirmed_id == proposal_id)
+            ):
+                return TravelArrangements.model_validate_json(record.data)
             if record is None or record.pending_data is None:
                 raise ValueError("没有待确认方案，请先整理交通和住宿。")
             if proposal_id is not None and record.pending_id != proposal_id:

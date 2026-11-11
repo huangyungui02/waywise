@@ -10,36 +10,39 @@ def offline_logfire(monkeypatch):
     monkeypatch.setenv("LOGFIRE_SEND_TO_LOGFIRE", "false")
 
 
-@pytest.fixture(autouse=True)
-def offline_redis(monkeypatch):
-    from fakeredis import FakeServer
-    from fakeredis.aioredis import FakeRedis
-    from stream_backend import LocalStreams
-
-    monkeypatch.setattr("app.main.StreamBackend", LocalStreams)
-    server = FakeServer()
-    monkeypatch.setattr(
-        "app.main.Redis.from_url",
-        lambda *args, **kwargs: FakeRedis(server=server, decode_responses=True),
-    )
-    return server
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--redis-url", default=None, help="显式启用真实 Redis Streams 联调"
-    )
-
-
 @pytest.fixture
 def app_factory(monkeypatch):
     from app import main as app
 
     def create(settings=None, agent=None):
+        from dbos._dbos import _get_or_create_dbos_registry
+
+        _get_or_create_dbos_registry().instance_info_map.clear()
         with monkeypatch.context() as patch:
             if settings is not None:
                 patch.setattr(app, "Settings", lambda: settings)
             if agent is not None:
+                from pydantic_ai.capabilities import CombinedCapability
+                from pydantic_ai.durable_exec.dbos import DBOSDurability
+
+                from app.streams import record_events
+
+                # 使用官方 FunctionModel；在 worker 启动前注册实际测试模型和工具。
+                model = agent._get_model_outside_run()
+                agent.model = model
+                root = agent.root_capability.visit_and_replace(
+                    lambda cap: None if isinstance(cap, DBOSDurability) else cap
+                )
+                durability = DBOSDurability(
+                    name="offline-travel",
+                    event_stream_handler=record_events,
+                    model_step_config={"preemptible": True},
+                    models={"offline": model},
+                    parallel_execution_mode="sequential",
+                ).for_agent(agent)
+                agent._root_capability = CombinedCapability(
+                    [*([root] if root else []), durability]
+                )
                 patch.setattr(app, "create_agent", lambda settings: agent)
             return app.create_app()
 

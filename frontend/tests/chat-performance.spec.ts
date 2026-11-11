@@ -36,7 +36,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	const detail = {
 		summary,
 		messages: [...base, { id: 'current-run', role: 'assistant', parts: [{ type: 'text', text }] }],
-		recovery: { run_id: 'current-run', cursor: '1002-0', messages: base },
+		recovery: { run_id: 'current-run', cursor: '1002', messages: base },
 		arrangements: null,
 		pending_arrangements: null,
 		pending_id: null,
@@ -51,7 +51,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	];
 	const frames = chunks.map(
 		(chunk, i) =>
-			`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify({ type: 'data-progress', data: { runId: 'current-run', cursor: `${i + 1}-0` }, transient: true })}\n\n`
+			`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify({ type: 'data-progress', data: { runId: 'current-run', cursor: String(i + 1) }, transient: true })}\n\n`
 	);
 	await page.addInitScript(
 		({ head, tail }) => {

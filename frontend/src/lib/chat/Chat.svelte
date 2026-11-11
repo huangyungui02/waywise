@@ -29,7 +29,7 @@
 	let running = $derived(
 		(conversation.recovering && conversation.chat.status !== 'error') ||
 			['submitted', 'streaming'].includes(conversation.chat.status) ||
-			conversation.detail.summary.outcome === 'running'
+			['queued', 'running'].includes(conversation.detail.summary.outcome)
 	);
 	let thinking = $derived(
 		conversation.chat.status === 'streaming' &&

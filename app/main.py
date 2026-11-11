@@ -1,19 +1,17 @@
 """FastAPI 会话接口，使用官方存储和 Vercel AI 流协议。"""
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import logfire
+from dbos import DBOS
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic_ai import Agent
-from redis.asyncio import Redis
-from redis_fastapi import StreamBackend
-from redis_fastapi.config import get_settings as redis_settings
-from redis_fastapi.exceptions import StreamError
-from redis_fastapi.streams import check_stream_settings, stream_error_handler
+from sqlalchemy.engine import URL
 
 from app.agent import create_agent
 from app.db.travel import TravelStore
@@ -27,36 +25,35 @@ def create_app() -> FastAPI:
     database = settings.database_path
     database.parent.mkdir(parents=True, exist_ok=True)
     store = TravelStore(database=database)
-    redis = Redis.from_url(
-        settings.redis_url.get_secret_value(),
-        decode_responses=True,
-        protocol=2,
-        socket_connect_timeout=5,
-        socket_timeout=redis_settings().socket_timeout,
+    dbos_database = settings.dbos_database_path or database.with_name("dbos.sqlite")
+    dbos_database.parent.mkdir(parents=True, exist_ok=True)
+    DBOS(
+        config={
+            "name": "travel-agent",
+            "system_database_url": URL.create(
+                "sqlite", database=str(dbos_database)
+            ).render_as_string(hide_password=False),
+            "enable_otlp": bool(settings.logfire_token.get_secret_value()),
+        }
     )
-    check_stream_settings()
-    streams = StreamBackend(lambda: redis)
     agent = create_agent(settings)
-    replies = Replies(
-        agent=agent,
-        store=store,
-        redis=redis,
-        streams=streams,
-        max_concurrent_runs=settings.max_concurrent_runs,
-    )
+    replies = Replies(agent=agent, store=store)
 
     @asynccontextmanager
     async def lifespan(api: FastAPI):
-        async with redis, store:
-            await redis.ping()
-            await streams.detect()
-            await store.conversations.recover_interrupted_runs()
+        async with store:
+            DBOS.launch()
+            await DBOS.register_queue_async(
+                "conversations",
+                global_concurrency=settings.max_concurrent_runs,
+                polling_interval_sec=0.1,
+            )
             api.state.replies = replies
             api.state.store = store
             try:
                 yield
             finally:
-                await streams.aclose()
+                await asyncio.to_thread(DBOS.destroy)
 
     api = FastAPI(title="知途 · Waywise", lifespan=lifespan)
     api.add_middleware(
@@ -66,7 +63,6 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type"],
         expose_headers=["x-vercel-ai-ui-message-stream"],
     )
-    api.add_exception_handler(StreamError, stream_error_handler)
 
     if token := settings.logfire_token.get_secret_value():
         telemetry = logfire.configure(

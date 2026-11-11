@@ -294,8 +294,9 @@ async def test_arrangements_store_save_update_isolation_and_delete(
         await store.arrangements.confirm("chat-a", "a1")
     await store.arrangements.confirm("chat-a", "a2")
     assert (await store.arrangements.get_state("chat-a"))["confirmed_id"] == "a2"
-    with pytest.raises(ValueError, match="没有待确认"):
-        await store.arrangements.confirm("chat-a")
+    assert await store.arrangements.confirm("chat-a") == await store.arrangements.get(
+        "chat-a"
+    )
     store = await store_factory(database=database)
     assert (await store.arrangements.get("chat-a")) == updated
     assert (await store.arrangements.get("chat-b")) == arrangements

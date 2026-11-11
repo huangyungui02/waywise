@@ -13,6 +13,7 @@
 - 前端位于 frontend，使用 Svelte 5 + TypeScript + SvelteKit，样式使用 Tailwind CSS 和 shadcn-svelte，使用静态 SPA 构建与客户端路由；聊天使用官方 AI SDK，不自行实现流协议。后端位于 `app/`，使用 FastAPI 与官方 `VercelAIAdapter`，方便后续 Capacitor 客户端复用 API。
 - 历史由后端 SQLite 管理，基于官方 `pydantic_ai.conversation_store.ConversationStore`，使用 SQLAlchemy AsyncSession / aiosqlite 实现异步会话存储，与 `ArrangementStore`、`ProductStore` 统一由 `TravelStore` 持有，待确认和已确认的 TravelArrangements 通过 SQLAlchemy 定义存储表并同库保存，业务模型保留 Pydantic；浏览器提交的历史不能替代服务端记录。
 - MCP 使用官方 `MCP` capability；飞猪查询使用 Harness `Skills`、`FileSystem` 加载上游 Skill 和参考文档，由专用工具 `call_flyai` 统一执行 CLI。
+- 回复使用 DBOS 工作流和官方 `DBOSDurability` capability，队列控制并发与会话去重，原生持久流保存事件；当前保持单节点、单进程和 SQLite，不维护内存运行注册表。
 - 不自建 Agent 调度器、Skill 加载器、MCP 客户端、checkpoint 框架或通用工具抽象。
 - 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，开启思考（reasoning effort 为 medium），使用官方 `WebSearch` capability 启用原生搜索。
 - 时间等动态信息通过工具按需获取，避免注入不断变化的系统指令。

@@ -831,11 +831,11 @@ test('失败运行刷新后保留已生成内容，恢复不会卡在同步状�
 	await page.goto('/');
 	await page.getByRole('textbox', { name: '旅行需求' }).fill('失败恢复测试');
 	await page.getByRole('button', { name: '发送', exact: true }).click();
-	await expect(page.getByRole('alert')).toContainText('离线模型失败');
+	await expect(page.getByRole('alert')).toContainText('回复执行失败');
 	await expect(page.getByText('失败前已经生成的建议。', { exact: true })).toBeVisible();
 	await page.reload();
 	await expect(page.getByText('失败前已经生成的建议。', { exact: true })).toBeVisible();
-	await expect(page.getByRole('alert')).toContainText('离线模型失败');
+	await expect(page.getByRole('alert')).toContainText('回复执行失败');
 	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
 });
 
@@ -1261,3 +1261,68 @@ for (const mode of ['自驾', '打车']) {
 		).toBeEmpty();
 	});
 }
+
+test('持久步骤重试时自动重新同步并替换旧的部分回复', async ({ page }) => {
+	const user = { id: 'question', role: 'user', parts: [{ type: 'text', text: '恢复旅行建议' }] };
+	const answer = {
+		id: 'durable-run',
+		role: 'assistant',
+		parts: [{ type: 'text', text: '重试后的完整建议。' }]
+	};
+	let streams = 0;
+	let completed = false;
+	await page.route('**/api/**', async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		const summary = {
+			id: 'durable-retry',
+			title: '恢复测试',
+			outcome: completed ? 'completed' : 'running',
+			updated_at: new Date().toISOString()
+		};
+		if (path.endsWith('/chat/stream')) {
+			streams += 1;
+			const chunks: object[] = [
+				{ type: 'start', messageId: 'durable-run' },
+				{ type: 'text-start', id: 'text' },
+				{
+					type: 'text-delta',
+					id: 'text',
+					delta: streams === 1 ? '旧的部分建议。' : '重试后的完整建议。'
+				}
+			];
+			if (streams === 1) chunks.push({ type: 'error', errorText: '回复正在恢复，请重新同步' });
+			else {
+				completed = true;
+				chunks.push({ type: 'text-end', id: 'text' }, { type: 'finish' });
+			}
+			await route.fulfill({
+				headers: { 'content-type': 'text/event-stream', 'x-vercel-ai-ui-message-stream': 'v1' },
+				body:
+					chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n'
+			});
+			return;
+		}
+		await route.fulfill({
+			json:
+				path === '/api/conversations'
+					? [summary]
+					: {
+							summary,
+							messages: completed ? [user, answer] : [user],
+							recovery: completed
+								? null
+								: { run_id: 'durable-run', cursor: null, messages: [user] },
+							arrangements: null,
+							pending_arrangements: null,
+							pending_id: null,
+							confirmed_id: null
+						}
+		});
+	});
+	await page.goto('/chat/durable-retry');
+	await expect(page.getByText('重试后的完整建议。', { exact: true })).toBeVisible();
+	await expect(page.getByText('旧的部分建议。', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('正在同步最新进度…', { exact: true })).toHaveCount(0);
+	await expect(page.getByRole('alert')).toHaveCount(0);
+	expect(streams).toBe(2);
+});
