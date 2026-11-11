@@ -14,11 +14,14 @@ from app.dependencies import (
     get_conversations,
     get_replies,
     get_store,
+    require_access_token,
     require_conversation,
 )
 from app.models.arrangements import TravelArrangements
 
-router = APIRouter(prefix="/api/conversations")
+router = APIRouter(
+    prefix="/api/conversations", dependencies=[Depends(require_access_token)]
+)
 
 
 class ConversationSummary(BaseModel):

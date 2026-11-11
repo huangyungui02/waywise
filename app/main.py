@@ -6,10 +6,8 @@ from typing import Any, cast
 
 import logfire
 from dbos import DBOS
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic_ai import Agent
 from sqlalchemy.engine import URL
 
@@ -18,11 +16,12 @@ from app.chat.retention import clean_workflow_history
 from app.chat.workflows import Replies
 from app.db.travel import TravelStore
 from app.routes import chat, conversations
-from app.settings import ROOT, Settings
+from app.settings import Settings
 
 
 def create_app() -> FastAPI:
     settings = Settings()
+
     database = settings.database_path
     database.parent.mkdir(parents=True, exist_ok=True)
     store = TravelStore(database=database)
@@ -68,11 +67,12 @@ def create_app() -> FastAPI:
                 await asyncio.to_thread(DBOS.destroy)
 
     api = FastAPI(title="知途 · Waywise", lifespan=lifespan)
+    api.state.settings = settings
     api.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
         expose_headers=["x-vercel-ai-ui-message-stream"],
     )
 
@@ -103,16 +103,5 @@ def create_app() -> FastAPI:
 
     api.include_router(conversations.router)
     api.include_router(chat.router)
-
-    # 开发时 Vite 代理 /api；构建后由同一个 FastAPI 服务托管静态页面。
-    dist = ROOT / "frontend" / "build"
-    if dist.is_dir():
-        api.mount("/_app", StaticFiles(directory=dist / "_app"), name="assets")
-
-        @api.get("/{path:path}", include_in_schema=False)
-        async def frontend(path: str):
-            if path.startswith("api/"):
-                raise HTTPException(404)
-            return FileResponse(dist / "index.html")
 
     return api

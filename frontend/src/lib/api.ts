@@ -4,6 +4,12 @@ export function apiUrl(path: string): string {
 	return `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')}/api${path}`;
 }
 
+export function apiHeaders(headers?: HeadersInit): Record<string, string> {
+	const result = new Headers(headers);
+	result.set('Authorization', `Bearer ${import.meta.env.VITE_ACCESS_TOKEN ?? ''}`);
+	return Object.fromEntries(result);
+}
+
 export interface Conversation {
 	id: string;
 	title: string;
@@ -76,7 +82,7 @@ export async function api<T>(
 	init?: RequestInit,
 	request: typeof fetch = fetch
 ): Promise<T> {
-	const response = await request(apiUrl(path), init);
+	const response = await request(apiUrl(path), { ...init, headers: apiHeaders(init?.headers) });
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}));
 		throw new ApiError(

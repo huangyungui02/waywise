@@ -1,0 +1,48 @@
+name: travel-agent
+
+services:
+  travel-agent:
+    build: .
+    env_file:
+      - .env
+    environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
+      DATABASE_PATH: /app/data/travel.db
+      DBOS_DATABASE_PATH: /app/data/dbos.sqlite
+    volumes:
+      - travel-data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 60s
+    init: true
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?请在 .env 设置 DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      travel-agent:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  travel-data:
+  caddy-data:
+  caddy-config:

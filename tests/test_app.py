@@ -237,7 +237,7 @@ def test_ios_cors(app_factory, configured, tmp_path):
                 headers={
                     "Origin": "capacitor://localhost",
                     "Access-Control-Request-Method": method,
-                    "Access-Control-Request-Headers": "content-type",
+                    "Access-Control-Request-Headers": "authorization,content-type",
                 },
             )
             assert response.status_code == 200

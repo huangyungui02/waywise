@@ -1,18 +1,18 @@
 # 知途 · Waywise 个人 iOS 客户端
 
-客户端将 SvelteKit 静态页面打包进 Capacitor，连接同一个 FastAPI 后端；聊天、回复恢复与行程仍由后端保存。当前没有登录和用户隔离，请通过个人 VPN 或受控网络访问，勿直接开放无认证的公网接口。
+客户端将 SvelteKit 静态页面打包进 Capacitor，连接同一个 FastAPI 后端；聊天、回复恢复与行程仍由后端保存。App 仅在个人设备安装，不做分发；使用构建时写入的个人 Bearer 令牌，无登录和用户隔离。网页只用于本地开发，不在服务器部署。
 
 ## 准备后端
 
-按 README 启动后端，并通过手机可访问的 HTTPS 地址提供服务。后端 `.env` 增加：
+按 README 使用 `docker compose -f compose.prod.yml up -d --build` 部署后端与 Caddy，配置真实域名和服务端 `ACCESS_TOKEN`。开放 80、443，后端 7932 只在容器网络内可访问。Caddy 自动申请并续期证书，FastAPI 不托管网页。
+
+后端 `.env` 保留 iOS WebView 来源：
 
 ```dotenv
 CORS_ORIGINS=["capacitor://localhost"]
 ```
 
-修改后重启后端。Compose 默认仅绑定服务器的 `127.0.0.1:7932`，可由同机 HTTPS 反向代理转发到该端口；Redis 不需要对手机开放。代理应关闭聊天流响应缓冲，并允许较长的连接时间。
-
-跨域配置仅允许 WebView 发请求，不提供访问认证；个人网络访问限制应由 VPN 或部署入口实现。
+跨域配置允许 WebView 发送请求，业务接口仍统一校验访问令牌；健康检查和 CORS 预检无需令牌。修改服务端配置后执行生产 Compose 的 `up -d` 重新创建容器。
 
 ## 配置和构建客户端
 
@@ -23,20 +23,23 @@ pnpm --dir frontend install --frozen-lockfile
 cp frontend/.env.example frontend/.env.local
 ```
 
-在 `frontend/.env.local` 填写后端地址，不含 `/api`：
+在 `frontend/.env.local` 填写后端地址（不含 `/api`）和与后端相同的访问令牌：
 
 ```dotenv
 VITE_API_BASE_URL=https://travel.example.com
+VITE_ACCESS_TOKEN=<与后端 ACCESS_TOKEN 相同的令牌>
 ```
 
-地址在构建时写入前端，不是密钥。不要在此填写模型或飞猪凭据。网页同源部署时留空；若同时构建网页和 App，注意该文件会影响两种构建，也可以只在构建命令中设置环境变量。
+地址和个人访问令牌都会写进 App 的静态资源，令牌可从安装包提取，因此只用于个人安装，不分发安装包。实际配置放在被 Git 忽略的 `.env.local`，不要写入源码；不要在前端填写模型、高德或飞猪密钥。轮换服务端令牌后，必须同步修改前端配置、重新构建并安装。
+
+本地 Vite 调试时 `VITE_API_BASE_URL` 留空，令牌仍需与本地后端一致；Docker 本地 Compose 会自动传入根目录 `.env` 的令牌。
 
 ```bash
 pnpm --dir frontend ios:sync
 pnpm --dir frontend ios:open
 ```
 
-`ios:sync` 先构建静态页面，再同步到已纳入仓库的 `frontend/ios` 工程。修改前端或后端地址后需要重新执行。无需再次运行 `cap add ios`。
+`ios:sync` 先构建静态页面，再同步到已纳入仓库的 `frontend/ios` 工程。修改前端、后端地址或令牌后需要重新执行。无需再次运行 `cap add ios`。
 
 在 Xcode 中选择 App scheme 和 iPhone 模拟器，点击 Run。真机运行需要在 Signing & Capabilities 选择自己的 Team，并将 Bundle Identifier 改为自己可用的标识；同时更新 `frontend/capacitor.config.ts` 中的 `appId`，保持一致。
 

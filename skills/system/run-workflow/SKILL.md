@@ -106,13 +106,9 @@ references it; every agent ends when the workflow ends.
 
 ```python
 reviewer = agent("You review Go code for correctness.", role="Reviewer")
-bugs = await reviewer(
-    "List the bugs in foo.go.", {"type": "array", "items": {"type": "string"}}
-)
+bugs = await reviewer("List the bugs in foo.go.", {"type": "array", "items": {"type": "string"}})
 fixes = await parallel(bugs, lambda b: agent(f"Fix: {b}", {"type": "string"}))
-ok = await reviewer(
-    f"Fixes made: {fixes}. Are all your bugs fixed?", {"type": "boolean"}
-)
+ok = await reviewer(f"Fixes made: {fixes}. Are all your bugs fixed?", {"type": "boolean"})
 del reviewer
 ```
 
@@ -186,14 +182,11 @@ files = await agent(
 )
 
 phase("Review")
-reviews = await parallel(
-    files,
-    lambda f: agent(
-        f"Review {f} for misuse of Bar(). Reply in 3 bullets or 'OK'.",
-        schema={"type": "string"},
-        role=f"Review {f}",
-    ),
-)
+reviews = await parallel(files, lambda f: agent(
+    f"Review {f} for misuse of Bar(). Reply in 3 bullets or 'OK'.",
+    schema={"type": "string"},
+    role=f"Review {f}",
+))
 for r in reviews:
     log(r)
 ```

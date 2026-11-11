@@ -7,13 +7,10 @@
 .pydantic-ai-harness
 data
 **/node_modules
-frontend/test-results
-frontend/playwright-report
 **/*.tsbuildinfo
 tests
 .agents
 .codex
 .aws
 
-frontend/.svelte-kit
-frontend/build
+frontend

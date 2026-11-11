@@ -1,99 +1,112 @@
 # 知途 · Waywise
 
-知途（Waywise）是一个可以在网页和 iOS App 中聊天的国内旅行助手，帮你查询火车票、机票、大巴商品和酒店，提供购买链接，并安排每日游览路线和预算。
+知途（Waywise）是一个个人使用的 iOS 国内旅行助手，帮你查询火车票、机票、大巴商品和酒店，提供购买链接，并安排每日游览路线和预算。
 
 先聊清楚需求，再选定交通和住宿；你确认方案后，助手再安排具体行程。已经订好的车票和酒店也可以直接告诉它。
 
 目前支持 **国内多目的地串联、分段交通和酒店住宿**，各段可使用火车、飞机、大巴、自驾、打车或轮渡（含换乘），支持单程、往返或异地结束。
 
-## Docker 部署
+## 配置
 
-安装 Docker Engine 或 Docker Desktop，并确保可以使用 Docker Compose v2。
-无需在宿主机安装 Python、Node.js 或飞猪 CLI，镜像会安装运行依赖并构建前端。
-
-下载或克隆仓库，进入项目根目录：
+复制配置文件，填写百炼 API Key、高德 **Web 服务** Key 和个人访问令牌：
 
 ```bash
 cp .env.example .env
+openssl rand -hex 32
 ```
 
-编辑 `.env`，填写百炼 API Key 和高德 **Web 服务** Key：
-
-```dotenv
-DASHSCOPE_API_KEY=你的百炼APIKey
-AMAP_MAPS_API_KEY=你的高德Web服务Key
-```
+将生成的随机值填入 `.env` 的 `ACCESS_TOKEN`。这个令牌供你自己的 App 和开发网页调用后端，不能提交到 Git；模型及其他服务密钥只保存在后端。
 
 | 配置项 | 是否必填 | 说明 |
 | --- | --- | --- |
+| `ACCESS_TOKEN` | 是 | 个人 API 访问令牌，不能为空 |
 | `DASHSCOPE_API_KEY` | 是 | [百炼 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
-| `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)申请的 Web 服务类型 Key |
-| `FLYAI_API_KEY` | 否 | 飞猪访问凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
-| `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`），需支持 Responses 接口、内置搜索和工具调用 |
-| `DASHSCOPE_BASE_URL` | 否 | 默认 `https://dashscope.aliyuncs.com/compatible-mode/v1`，需与 Key 的地域和业务空间匹配 |
+| `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)的 Web 服务 Key |
+| `DOMAIN` | 生产必填 | 解析到服务器的真实域名，供 Caddy 自动申请 HTTPS 证书 |
+| `FLYAI_API_KEY` | 否 | 飞猪凭据，申请与试用说明见[飞猪快速开始](https://flyai.open.fliggy.com/docs/quickstart) |
+| `TRAVEL_MODEL` | 否 | 默认 `qwen3.8-flash`，开启思考（`medium`） |
+| `DASHSCOPE_BASE_URL` | 否 | 默认北京兼容地址，需与 Key 的地域和业务空间匹配 |
 
-Compose 在运行时读取 `.env`，该文件不会进入镜像。容器不读取宿主机的飞猪 CLI 配置，
-已有飞猪凭据请通过 `FLYAI_API_KEY` 配置。模型、搜索及其他服务费用以提供方为准。
+## Docker 本地开发
 
-启动：
-
-```bash
-docker compose up -d --build
-docker compose ps
-```
-
-打开 **http://127.0.0.1:7932**。首次构建需要下载镜像和依赖，可通过以下命令查看日志：
+安装 Docker Engine 或 Docker Desktop，以及 Docker Compose v2。无需在宿主机安装 Python、Node.js 或飞猪 CLI。
 
 ```bash
-docker compose logs -f travel-agent
+docker compose up --build
 ```
 
-更新代码后重新运行 `docker compose up -d --build`；停止并移除容器：
+打开 **http://127.0.0.1:5173**。本地 Compose 启动 Vite 前端和 FastAPI 后端，支持前后端代码热更新。
+Vite 将 `/api` 代理到后端，并使用根目录 `.env` 的 `ACCESS_TOKEN`；无需再配置前端令牌。
+后端 API 在 `http://127.0.0.1:7932`，不挂载网页；`/docs` 可通过 Authorize 输入令牌调试。
+首次启动需要下载镜像及依赖，修改依赖后需重新构建或重启对应服务。
+
+停止本地服务使用 `docker compose down`。本地项目名为 `travel-agent-dev`，数据库与生产数据卷分开。
+
+## Docker 生产部署
+
+生产配置独立使用，只有后端和 Caddy，不构建或部署前端。服务器安装 Docker 和 Compose，配置 `.env`，
+将 `DOMAIN` 改成真实域名并解析到服务器，允许公网 TCP 80、443 访问，然后运行：
 
 ```bash
-docker compose down
+docker compose -f compose.prod.yml up -d --build
+docker compose -f compose.prod.yml ps
+docker compose -f compose.prod.yml logs -f
 ```
 
-聊天和行程保存在 Docker 命名卷 `travel-data` 的 `/app/data/travel.db`，
-重建镜像或执行上述停止命令会保留数据。请勿使用 `docker compose down -v`，它会删除数据卷。
-Compose 固定数据库路径，`.env` 中的 `DATABASE_PATH` 仅供本地开发使用。
+Caddy 自动申请和续期证书，证书状态保存在持久卷中。后端 7932 不向宿主机发布。
+访问 `https://你的域名/api/health` 检查服务，根路径返回 404；其他业务 API 需要 `Authorization: Bearer <ACCESS_TOKEN>`。
+iOS App 使用相同令牌访问 HTTPS 后端，不提供注册和登录，也不隔离多个用户的数据。
 
-DBOS 在同一进程内运行，无需额外服务。工作流、步骤结果和回复事件保存在同一数据卷的
-`/app/data/dbos.sqlite`；备份和迁移时请同时保留两个数据库，不能只复制 `travel.db`。
-已结束的执行记录默认保留 7 天，每小时自动清理，可通过 `DBOS_RETENTION_DAYS` 调整。
-聊天历史和旅行安排不受影响；SQLite 清理后的空间会被后续写入复用，文件不会立即缩小。
+两份 Compose **不要叠加使用**。生产项目名为 `travel-agent`，与原默认部署的数据卷命名保持一致；旧数据不会自动进入本地开发卷。
+生产容器配置了退出重启和日志轮转，仍需自行监控磁盘并定期备份。
 
-备份时先停止服务，再复制整个数据目录：
+更新前等待当前回复结束，再执行同一条 `up -d --build` 命令。配置变更也使用 `up` 重新创建容器，不能只执行 `restart`。
+停止并移除生产容器：
 
 ```bash
-docker compose stop travel-agent
-docker compose cp travel-agent:/app/data ./backup
-docker compose start travel-agent
+docker compose -f compose.prod.yml down
 ```
 
-Docker 默认使用独立数据卷，不会自动导入旧的本地 `data/` 数据。需要迁移时，
-先启动一次容器以建立数据卷，然后停止服务，将旧数据库目录内容复制进去并修正权限：
+不要加 `-v`，否则会删除数据库和证书数据卷。运行时 `.env` 不进入后端镜像，容器也不读取宿主机的飞猪 CLI 配置；已有飞猪凭据通过 `FLYAI_API_KEY` 传入。
+
+### 数据与备份
+
+业务数据在 `/app/data/travel.db`，DBOS 执行记录在 `/app/data/dbos.sqlite`，都保存在 `travel-data` 命名卷。
+Compose 固定这两个路径，根目录 `.env` 中的 `DATABASE_PATH` 只用于直接启动 Python 的开发方式。
+DBOS 在同一进程中运行，默认同时执行 4 个会话；已结束的执行记录保留 7 天并每小时清理，使用 `DBOS_RETENTION_DAYS` 调整。
+聊天历史和安排不受清理影响；SQLite 的空闲空间会被复用，文件不会立即缩小。
+
+停服后备份整个数据目录，并将备份保存到服务器之外：
 
 ```bash
-docker compose stop travel-agent
-docker compose cp ./data/. travel-agent:/app/data/
-docker compose run --rm --no-deps --user root travel-agent chown -R traveler:traveler /app/data
-docker compose start travel-agent
+docker compose -f compose.prod.yml stop travel-agent
+docker compose -f compose.prod.yml cp travel-agent:/app/data ./backup
+docker compose -f compose.prod.yml start travel-agent
 ```
 
-迁移前先备份原数据库和容器数据；复制时两端服务都应停止。
-默认只绑定本机地址，当前没有用户登录与多用户隔离。
+导入已有本地数据库前，先备份原数据，启动一次生产服务创建容器和卷，再停止后端：
+
+```bash
+docker compose -f compose.prod.yml stop travel-agent
+docker compose -f compose.prod.yml cp ./data/. travel-agent:/app/data/
+docker compose -f compose.prod.yml run --rm --no-deps --user root travel-agent chown -R traveler:traveler /app/data
+docker compose -f compose.prod.yml start travel-agent
+```
+
+复制期间两端服务均应停止，必须一起复制两个数据库。
 
 ## iOS 个人客户端
 
-支持通过 Capacitor 将现有前端打包为 iOS App，连接个人后端。配置后端 HTTPS 地址、跨域来源及 Xcode 运行步骤见 [iOS 使用说明](docs/ios.md)。当前无登录与多用户隔离，请通过个人 VPN 或受控网络使用。
+前端静态页面通过 Capacitor 打包进 iOS App，只在个人设备安装，不做分发。
+后端地址和访问令牌在构建时写入 App；令牌可从安装包提取，轮换后需要重新构建并安装。
+构建配置和 Xcode 使用方式见 [iOS 使用说明](docs/ios.md)。浏览器界面仅用于本地开发调试。
 
 ## 可观测性（Logfire）
 
 可选接入 [Logfire](https://pydantic.dev/docs/ai/integrations/logfire/)，查看 API 请求、
 Agent 运行、模型调用和工具调用（包括 `call_flyai`）的链路、耗时、异常和 Token 用量。
 在 Logfire 创建项目并取得 **Write Token**，将其填入本地 `.env` 的 `LOGFIRE_TOKEN`，
-再执行 `docker compose up -d --build`。发送一条旅行咨询后，在对应项目查看 `travel-agent` 服务。
+再执行 `docker compose -f compose.prod.yml up -d --build`。发送一条旅行咨询后，在对应项目查看 `travel-agent` 服务。
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -102,7 +115,7 @@ Agent 运行、模型调用和工具调用（包括 `call_flyai`）的链路、�
 | `LOGFIRE_INCLUDE_CONTENT` | `false` | 设为 `true` 后采集对话、模型回复、工具参数和结果 |
 
 默认不采集对话和工具正文、二进制内容、HTTP 请求头与 FastAPI 解析后的请求参数，
-健康检查和静态资源请求也不记录。开启正文采集后，旅行安排等信息会发送到 Logfire，
+健康检查请求也不记录。开启正文采集后，旅行安排等信息会发送到 Logfire，
 请按实际排查需要配置。飞猪 CLI 内部没有单独埋点，链路显示整个 `call_flyai` 调用。
 SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储。
 
@@ -143,7 +156,7 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 - 当前部署使用单节点、单后端进程和 SQLite。DBOS 默认同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整，超出后排队。同一版本服务重启后会恢复未完成的工作流；已完成的模型和工具步骤不重跑，中断中的步骤可能重新执行并产生额外调用费用。
 - 未完成模型请求的部分输出会在恢复时被替换为重试结果。DBOS 不保证外部接口恰好调用一次；本项目不执行代下单与支付。
 - 更新代码会改变 DBOS 应用版本；部署新版本前请等待当前回复完成。SQLite 文件必须保存在持久化磁盘，当前不支持多副本部署。
-- 尚未提供用户登录和多用户数据隔离，适合本地个人使用。
+- 使用个人 Bearer 令牌保护 API，无账户系统和多用户数据隔离；App 仅供个人安装使用。
 - Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
 ## 参与开发
@@ -162,11 +175,7 @@ corepack enable
 pnpm --dir frontend install --frozen-lockfile
 ```
 
-后端位于 `app/`：`main.py` 负责应用装配，`routes/` 提供 HTTP 接口，`agent.py` 定义 Agent 和工具，
-`replies.py` 定义 DBOS 工作流，`streams.py` 桥接持久事件与官方流协议，`db/conversations.py` 处理会话历史与标题，`settings.py` 管理配置，`models/` 定义业务模型，`db/` 定义数据库表和读写操作。前端位于 `frontend/`，使用 Svelte 5、SvelteKit、Tailwind CSS 和 shadcn-svelte。页面与组件分别位于 `src/routes/` 和 `src/lib/components/`，
-官方 UI 组件在 `src/lib/components/ui/`；`src/routes/layout.css` 管理主题和样式。
-
-分别在两个终端启动后端和前端：
+复制 `frontend/.env.example` 到 `frontend/.env.local`，将 `VITE_ACCESS_TOKEN` 设置为根目录 `.env` 的 `ACCESS_TOKEN`，本地 `VITE_API_BASE_URL` 留空。然后分别在两个终端启动后端和前端：
 
 ```bash
 uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 7932
@@ -176,7 +185,7 @@ pnpm --dir frontend dev
 打开 Vite 打印的地址（通常为 `http://127.0.0.1:5173`）。
 API 文档位于 `http://127.0.0.1:7932/docs`。
 本地开发默认数据库为 `data/travel.db`，可通过 `DATABASE_PATH` 修改。
-若需由本地后端托管前端，先执行 `pnpm --dir frontend build`。
+FastAPI 只提供 API；网页由 Vite 提供，静态构建结果只用于 iOS 打包。
 
 运行离线测试：
 

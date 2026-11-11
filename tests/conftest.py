@@ -1,6 +1,22 @@
 """测试不读取本地 Logfire 凭据，也不向远程导出遥测。"""
 
 import pytest
+from starlette.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def authenticated_clients(monkeypatch):
+    monkeypatch.setenv("ACCESS_TOKEN", "offline-access-token")
+    initialize = TestClient.__init__
+
+    def authenticated_init(self, *args, **kwargs):
+        kwargs["headers"] = {
+            "Authorization": "Bearer offline-access-token",
+            **kwargs.pop("headers", {}),
+        }
+        initialize(self, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "__init__", authenticated_init)
 
 
 @pytest.fixture(autouse=True)

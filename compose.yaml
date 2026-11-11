@@ -1,3 +1,5 @@
+name: travel-agent-dev
+
 services:
   travel-agent:
     build: .
@@ -6,12 +8,36 @@ services:
     env_file:
       - .env
     environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
       DATABASE_PATH: /app/data/travel.db
       DBOS_DATABASE_PATH: /app/data/dbos.sqlite
+    command: ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "7932", "--reload", "--reload-dir", "/app/app"]
     volumes:
+      - ./app:/app/app:ro
+      - ./skills:/app/skills:ro
       - travel-data:/app/data
-    restart: unless-stopped
+    init: true
+
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: ["sh", "-c", "corepack pnpm install --frozen-lockfile && corepack pnpm dev --host 0.0.0.0"]
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      API_PROXY_TARGET: http://travel-agent:7932
+      VITE_API_BASE_URL: ""
+      VITE_ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
+    volumes:
+      - ./frontend:/app
+      - frontend-modules:/app/node_modules
+      - frontend-kit:/app/.svelte-kit
+    depends_on:
+      travel-agent:
+        condition: service_healthy
     init: true
 
 volumes:
   travel-data:
+  frontend-modules:
+  frontend-kit:

@@ -5,7 +5,11 @@ import { join } from 'node:path';
 export default defineConfig({
 	testDir: './tests',
 	workers: 1,
-	use: { baseURL: 'http://127.0.0.1:5179', browserName: 'chromium' },
+	use: {
+		baseURL: 'http://127.0.0.1:5179',
+		browserName: 'chromium',
+		extraHTTPHeaders: { Authorization: 'Bearer offline-access-token' }
+	},
 	webServer: [
 		{
 			command:
@@ -16,7 +20,11 @@ export default defineConfig({
 		},
 		{
 			command: 'pnpm dev --host 127.0.0.1 --port 5179',
-			env: { API_PROXY_TARGET: 'http://127.0.0.1:17933', VITE_API_BASE_URL: '' },
+			env: {
+				API_PROXY_TARGET: 'http://127.0.0.1:17933',
+				VITE_API_BASE_URL: '',
+				VITE_ACCESS_TOKEN: 'offline-access-token'
+			},
 			url: 'http://127.0.0.1:5179'
 		}
 	]

@@ -235,6 +235,7 @@ def create_app():
     agent.model.function = title
     settings = Settings(
         _env_file=None,
+        access_token="offline-access-token",
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map-key",
         database_path=Path(os.environ["UI_TEST_DATABASE"]),

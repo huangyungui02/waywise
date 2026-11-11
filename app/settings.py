@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    access_token: SecretStr = Field(min_length=1)
     database_path: Path = ROOT / "data" / "travel.db"
     dbos_database_path: Path | None = None
     dbos_retention_days: int = Field(default=7, ge=1)

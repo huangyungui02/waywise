@@ -27,7 +27,9 @@ def wait_detail(client, cid, outcome):
 def disconnect(client, backend, cid, started):
     async def send_and_disconnect():
         async with httpx2.AsyncClient(
-            transport=httpx2.ASGITransport(app=backend), base_url="http://test"
+            transport=httpx2.ASGITransport(app=backend),
+            base_url="http://test",
+            headers={"Authorization": "Bearer offline-access-token"},
         ) as browser:
 
             async def send():

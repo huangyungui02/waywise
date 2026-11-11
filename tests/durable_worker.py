@@ -66,6 +66,7 @@ def query() -> str:
 
 settings = Settings(
     _env_file=None,
+    access_token="offline-access-token",
     DASHSCOPE_API_KEY="test",
     AMAP_MAPS_API_KEY="test",
     database_path=folder / "travel.db",
@@ -77,7 +78,9 @@ with (
 ):
     backend = create_app()
 
-with TestClient(backend) as client:
+with TestClient(
+    backend, headers={"Authorization": "Bearer offline-access-token"}
+) as client:
     if not (folder / "cid").exists():
         from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 

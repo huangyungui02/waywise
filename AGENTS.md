@@ -10,7 +10,7 @@
 
 - 保持代码简洁，优先官方示例、API 和集成，避免重复实现框架已有能力。使用前核对已安装版本；[PydanticAI 官方参考](https://pydantic.dev/docs/ai/llms.txt)。
 - 不为测试方便牺牲正式代码的简洁性，不添加仅供测试使用的可选参数、注入入口、分支或抽象。测试替身与依赖替换放在测试侧，优先使用 pytest fixture、monkeypatch、框架原生测试机制和官方测试模型；正式代码的扩展点必须有实际业务需求。
-- 前端位于 frontend，使用 Svelte 5 + TypeScript + SvelteKit，样式使用 Tailwind CSS 和 shadcn-svelte，使用静态 SPA 构建与客户端路由；聊天使用官方 AI SDK，不自行实现流协议。后端位于 `app/`，使用 FastAPI 与官方 `VercelAIAdapter`，方便后续 Capacitor 客户端复用 API。
+- 前端位于 frontend，使用 Svelte 5 + TypeScript + SvelteKit，样式使用 Tailwind CSS 和 shadcn-svelte，使用静态 SPA 构建与客户端路由；聊天使用官方 AI SDK，不自行实现流协议。后端位于 `app/`，使用 FastAPI 与官方 `VercelAIAdapter`，只提供 API，不挂载网页；生产前端只打包为个人 iOS App，本地使用 Vite 调试。业务 API 使用个人 Bearer 令牌，模型及旅游服务密钥只留在后端。
 - 历史由后端 SQLite 管理，基于官方 `pydantic_ai.conversation_store.ConversationStore`，使用 SQLAlchemy AsyncSession / aiosqlite 实现异步会话存储，与 `ArrangementStore`、`ProductStore` 统一由 `TravelStore` 持有，待确认和已确认的 TravelArrangements 通过 SQLAlchemy 定义存储表并同库保存，业务模型保留 Pydantic；浏览器提交的历史不能替代服务端记录。
 - MCP 使用官方 `MCP` capability；飞猪查询使用 Harness `Skills`、`FileSystem` 加载上游 Skill 和参考文档，由专用工具 `call_flyai` 统一执行 CLI。
 - 回复使用 DBOS 工作流和官方 `DBOSDurability` capability，队列控制并发与会话去重，原生持久流保存事件；当前保持单节点、单进程和 SQLite，不维护内存运行注册表。
@@ -18,6 +18,12 @@
 - 默认使用百炼 `qwen3.8-flash`，通过 `OpenAIResponsesModel` / `AlibabaProvider` 接入，开启思考（reasoning effort 为 medium），使用官方 `WebSearch` capability 启用原生搜索。
 - 时间等动态信息通过工具按需获取，避免注入不断变化的系统指令。
 - `skills/flyai/` 尽量保留上游内容；更新时在 `skills/UPSTREAM.md` 记录来源与本地变更，不为调整措辞改写上游 Skill 或官方工具描述。
+
+## 文件组织
+
+- `app/main.py` 负责应用装配与资源生命周期；`routes/` 放 HTTP 路由，并在各自的 `APIRouter` 上声明鉴权等共同依赖；`dependencies.py` 实现鉴权、应用资源读取等 FastAPI 依赖，不在应用工厂中内嵌这些依赖。
+- `agent.py` 定义 Agent 与工具，`chat/` 集中管理聊天执行与恢复，`db/` 负责存储，`models/` 定义业务模型，`settings.py` 统一配置。功能相关代码就近组织，不为简单逻辑增加通用层或过度拆文件。
+- 前端页面放 `frontend/src/routes/`，功能代码放 `src/lib/` 对应目录，共用 UI 放 `src/lib/components/`；框架生成文件与构建产物不手动维护。
 
 ## 提示词与工具
 

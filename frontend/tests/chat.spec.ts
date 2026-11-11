@@ -1326,3 +1326,26 @@ test('持久步骤重试时自动重新同步并替换旧的部分回复', async
 	await expect(page.getByRole('alert')).toHaveCount(0);
 	expect(streams).toBe(2);
 });
+
+test('客户端主动携带令牌完成发送、恢复和停止', async ({ page, context }) => {
+	// 清除测试框架的默认认证，验证应用自身为普通请求和 AI SDK 流添加认证。
+	await context.setExtraHTTPHeaders({});
+	const requests: { path: string; authorization: string | undefined }[] = [];
+	page.on('request', (request) => {
+		const path = new URL(request.url()).pathname;
+		if (path.startsWith('/api/conversations'))
+			requests.push({ path, authorization: request.headers().authorization });
+	});
+	await startBackgroundReply(page);
+	await page.reload();
+	await expect(page.getByRole('button', { name: '停止', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: '停止', exact: true }).click();
+	await expect(page.getByRole('button', { name: '停止', exact: true })).toHaveCount(0);
+	expect(requests.some(({ path }) => path.endsWith('/chat'))).toBe(true);
+	expect(requests.some(({ path }) => path.endsWith('/chat/stream'))).toBe(true);
+	expect(requests.some(({ path }) => path.endsWith('/chat/stop'))).toBe(true);
+	expect(requests.length).toBeGreaterThan(4);
+	expect(
+		requests.every(({ authorization }) => authorization === 'Bearer offline-access-token')
+	).toBe(true);
+});
