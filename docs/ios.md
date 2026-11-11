@@ -50,3 +50,7 @@ pnpm --dir frontend ios:open
 依次检查新建会话、流式回复、切换会话、停止回复、确认方案和删除会话；生成期间切到后台再返回，检查历史和回复流能恢复。预订链接需在真机检查是否能打开目标页面。
 
 App 的页面随安装包提供，但查询和聊天需要连接后端。初版保留 Capacitor 模板图标，尚未配置发布签名、TestFlight 或 App Store 发布。
+
+启动时若显示无法连接服务器，检查构建时的 `VITE_API_BASE_URL`、设备网络、HTTPS 证书，以及后端是否允许 `capacitor://localhost` 跨域来源。鉴权失败则检查前后端令牌是否一致。修改前端配置后重新执行 `ios:sync` 并在 Xcode 中安装。
+
+保留 `capacitor.config.ts` 中的 `server.appStartPath: '/'`，让入口为 `capacitor://localhost/`。无路径入口 `capacitor://localhost` 在根布局请求失败时会触发 SvelteKit 重载，表现为白屏、闪烁和重复的 `WebView loaded`。
