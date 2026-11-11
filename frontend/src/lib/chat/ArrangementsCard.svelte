@@ -31,15 +31,29 @@
 		<Table.Root aria-label="交通安排">
 			<Table.Header>
 				<Table.Row>
-					{#each ['序号', '出行方式', ...(showNumber ? ['车次'] : []), '出发地点', '到达地点', '出发时间', '到达时间', '预订状态'] as heading (heading)}
+					{#each ['日期', '时间', '方式', '出发地点', '到达地点', ...(showNumber ? ['车次'] : []), '预订状态'] as heading (heading)}
 						<Table.Head scope="col">{heading}</Table.Head>
 					{/each}
 				</Table.Row>
 			</Table.Header>
 			<Table.Body>
-				{#each arrangements.transports as leg, index (`${leg.departure_time}-${leg.departure_station}`)}
+				{#each arrangements.transports as leg (`${leg.departure_time}-${leg.departure_station}`)}
 					<Table.Row>
-						<Table.Cell>{index + 1}</Table.Cell>
+						<Table.Cell
+							><time datetime={leg.departure_time.slice(0, 10)}
+								>{leg.departure_time.slice(5, 10).replace('-', '/')}</time
+							></Table.Cell
+						>
+						<Table.Cell>
+							<time datetime={leg.departure_time}>{leg.departure_time.slice(11, 16)}</time>
+							<span aria-label="至"> → </span>
+							<time datetime={leg.arrival_time}
+								>{#if leg.arrival_time.slice(0, 10) !== leg.departure_time.slice(0, 10)}{leg.arrival_time
+										.slice(5, 10)
+										.replace('-', '/')}
+								{/if}{leg.arrival_time.slice(11, 16)}</time
+							>
+						</Table.Cell>
 						<Table.Cell
 							>{{
 								train: '火车',
@@ -50,23 +64,13 @@
 								ferry: '轮渡'
 							}[leg.type]}</Table.Cell
 						>
-						{#if showNumber}<Table.Cell>{leg.number ?? ''}</Table.Cell>{/if}
 						<Table.Cell class="max-w-56 min-w-36 whitespace-normal"
 							>{leg.departure_station}</Table.Cell
 						>
 						<Table.Cell class="max-w-56 min-w-36 whitespace-normal"
 							>{leg.arrival_station}</Table.Cell
 						>
-						<Table.Cell
-							><time datetime={leg.departure_time}
-								>{leg.departure_time.slice(0, 10)}<br />{leg.departure_time.slice(11, 16)}</time
-							></Table.Cell
-						>
-						<Table.Cell
-							><time datetime={leg.arrival_time}
-								>{leg.arrival_time.slice(0, 10)}<br />{leg.arrival_time.slice(11, 16)}</time
-							></Table.Cell
-						>
+						{#if showNumber}<Table.Cell>{leg.number ?? ''}</Table.Cell>{/if}
 						<Table.Cell>
 							{#if leg.type !== 'drive'}
 								{#if leg.purchased}已预订
@@ -89,7 +93,7 @@
 			<Table.Root aria-label="住宿安排">
 				<Table.Header>
 					<Table.Row>
-						{#each ['酒店', '城市', '地址', '入住日期', '退房日期', '预订状态'] as heading (heading)}
+						{#each ['酒店', '入住日期', '退房日期', '城市', '地址', '预订状态'] as heading (heading)}
 							<Table.Head scope="col">{heading}</Table.Head>
 						{/each}
 					</Table.Row>
@@ -98,10 +102,16 @@
 					{#each arrangements.stays as stay (`${stay.hotel}-${stay.check_in}`)}
 						<Table.Row>
 							<Table.Cell class="max-w-48 min-w-32 whitespace-normal">{stay.hotel}</Table.Cell>
+							<Table.Cell
+								><time datetime={stay.check_in}>{stay.check_in.slice(5).replace('-', '/')}</time
+								></Table.Cell
+							>
+							<Table.Cell
+								><time datetime={stay.check_out}>{stay.check_out.slice(5).replace('-', '/')}</time
+								></Table.Cell
+							>
 							<Table.Cell>{stay.city}</Table.Cell>
 							<Table.Cell class="max-w-64 min-w-40 whitespace-normal">{stay.address}</Table.Cell>
-							<Table.Cell>{stay.check_in}</Table.Cell>
-							<Table.Cell>{stay.check_out}</Table.Cell>
 							<Table.Cell>
 								{#if stay.booked}已预订
 								{:else if stay.purchase_url}<a

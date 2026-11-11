@@ -1198,13 +1198,12 @@ test('多城市方案展示全部交通段和酒店并支持确认与刷新', as
 	await expect(card.getByText('南京测试酒店', { exact: true })).toBeVisible();
 	const transportTable = card.getByRole('table', { name: '交通安排' });
 	await expect(transportTable.getByRole('columnheader')).toHaveText([
-		'序号',
-		'出行方式',
-		'车次',
+		'日期',
+		'时间',
+		'方式',
 		'出发地点',
 		'到达地点',
-		'出发时间',
-		'到达时间',
+		'车次',
 		'预订状态'
 	]);
 	const scrolling = await transportTable.evaluate((table) => {
@@ -1247,7 +1246,7 @@ for (const mode of ['自驾', '打车']) {
 		await expect(card.getByRole('columnheader', { name: '车次', exact: true })).toHaveCount(0);
 		await expect(
 			card.getByRole('table', { name: '交通安排' }).getByRole('row').nth(1).getByRole('cell')
-		).toHaveCount(7);
+		).toHaveCount(6);
 		await expect(
 			card.getByRole('table', { name: '交通安排' }).getByText('轮渡', { exact: true })
 		).toBeVisible();
