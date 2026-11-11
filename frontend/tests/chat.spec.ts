@@ -269,7 +269,7 @@ for (const mobile of [false, true]) {
 		await expect(cards).toHaveCount(1);
 		await expect(cards.first().getByRole('button', { name: '确认方案' })).toBeEnabled();
 		await expect(cards.first().getByText('G123', { exact: true })).toBeVisible();
-		await expect(cards.first().getByRole('link', { name: '前往购买' })).toHaveAttribute(
+		await expect(cards.first().getByRole('link', { name: '点击预订' })).toHaveAttribute(
 			'href',
 			'https://example.com/train'
 		);
@@ -320,7 +320,7 @@ test('历史方案卡片兼容包装格式的工具参数', async ({ page }) => 
 		await route.fulfill({ response, json: detail });
 	});
 	await page.reload();
-	await expect(card.getByText('上海 → 杭州。', { exact: false })).toBeVisible();
+	await expect(card.getByText('共 2 段交通。', { exact: false })).toBeVisible();
 	await expect(card.getByText('G123', { exact: true })).toBeVisible();
 	await expect(card.getByRole('button', { name: '确认方案' })).toBeEnabled();
 });
@@ -1179,3 +1179,86 @@ test('手机商品标题和价格单行省略，介绍最多四行', async ({ pa
 	await expect(card.getByRole('link', { name: '点击预订' })).toBeVisible();
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('多城市方案展示全部交通段和酒店并支持确认与刷新', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+	await page.getByRole('textbox', { name: '旅行需求' }).fill('多城市方案');
+	await page.getByRole('button', { name: '发送', exact: true }).click();
+	const card = page.getByRole('region', { name: '交通与住宿方案' });
+	await expect(card.getByText(/共 3 段交通/)).toBeVisible();
+	await expect(
+		card
+			.getByRole('table', { name: '交通安排' })
+			.getByRole('row')
+			.nth(3)
+			.getByText('飞机', { exact: true })
+	).toBeVisible();
+	await expect(card.getByText('G456', { exact: true })).toBeVisible();
+	await expect(card.getByText('南京测试酒店', { exact: true })).toBeVisible();
+	const transportTable = card.getByRole('table', { name: '交通安排' });
+	await expect(transportTable.getByRole('columnheader')).toHaveText([
+		'序号',
+		'出行方式',
+		'车次',
+		'出发地点',
+		'到达地点',
+		'出发时间',
+		'到达时间',
+		'预订状态'
+	]);
+	const scrolling = await transportTable.evaluate((table) => {
+		const container = table.parentElement!;
+		container.scrollLeft = container.scrollWidth;
+		return {
+			overflows: container.scrollWidth > container.clientWidth,
+			moved: container.scrollLeft > 0
+		};
+	});
+	expect(scrolling).toEqual({ overflows: true, moved: true });
+	await page.screenshot({
+		path: '/private/tmp/travel-arrangements-table-mobile.png',
+		fullPage: true
+	});
+
+	await card.getByRole('button', { name: '确认方案' }).click();
+	await expect(card.getByText('已确认方案', { exact: true })).toBeVisible();
+	await page.reload();
+	await expect(card.getByText('已确认方案', { exact: true })).toBeVisible();
+	await expect(card.getByText('G456', { exact: true })).toBeVisible();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+		true
+	);
+});
+
+for (const mode of ['自驾', '打车']) {
+	test(`${mode}与轮渡无车次时隐藏车次列并支持确认`, async ({ page }) => {
+		await page.goto('/');
+		await page.getByRole('textbox', { name: '旅行需求' }).fill(`${mode}轮渡方案`);
+		await page.getByRole('button', { name: '发送', exact: true }).click();
+		const card = page.getByRole('region', { name: '交通与住宿方案' });
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByText(mode, { exact: true })
+		).toBeVisible();
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByRole('row').nth(1).getByRole('cell').last()
+		).toBeEmpty();
+		await expect(card.getByRole('link', { name: '点击预订' })).toHaveCount(0);
+		await expect(card.getByRole('columnheader', { name: '车次', exact: true })).toHaveCount(0);
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByRole('row').nth(1).getByRole('cell')
+		).toHaveCount(7);
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByText('轮渡', { exact: true })
+		).toBeVisible();
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByText('已预订', { exact: true })
+		).toHaveCount(1);
+		await card.getByRole('button', { name: '确认方案' }).click();
+		await expect(card.getByText('已确认方案', { exact: true })).toBeVisible();
+		await page.reload();
+		await expect(
+			card.getByRole('table', { name: '交通安排' }).getByRole('row').nth(1).getByRole('cell').last()
+		).toBeEmpty();
+	});
+}

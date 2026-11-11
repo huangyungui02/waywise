@@ -41,9 +41,9 @@ async def present_products(
 async def present_arrangements(
     ctx: RunContext[TravelStore], arrangements: TravelArrangements
 ) -> TravelArrangements:
-    """提交选定的完整往返交通和住宿，以卡片展示并结束本轮，等待用户确认。
+    """提交选定的完整的各段交通和住宿，以卡片展示并结束本轮，等待用户确认。
 
-    提交前核实往返方向、酒店位置和全部日期，未购买的商品必须有真实预订链接。
+    提交前核实各段路线衔接、酒店位置和全部日期。
     预计抵达时间需有依据并提前向用户说明；购买状态以用户陈述为准。
     校验失败时修正方案后重新提交，成功后等待用户确认或提出修改。
     """

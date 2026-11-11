@@ -11,17 +11,17 @@ export interface Conversation {
 	updated_at: string;
 }
 interface Transport {
-	type: 'train' | 'flight' | 'bus';
-	name: string;
+	type: 'train' | 'flight' | 'bus' | 'drive' | 'taxi' | 'ferry';
 	number: string | null;
-	departure_point: string;
-	arrival_point: string;
+	departure_station: string;
+	arrival_station: string;
 	departure_time: string;
 	arrival_time: string;
 	purchase_url: string | null;
 	purchased: boolean;
 }
 interface Stay {
+	city: string;
 	hotel: string;
 	address: string;
 	check_in: string;
@@ -30,10 +30,7 @@ interface Stay {
 	booked: boolean;
 }
 export interface TravelArrangements {
-	origin: string;
-	destination: string;
-	outbound: Transport;
-	inbound: Transport;
+	transports: Transport[];
 	stays: Stay[];
 }
 export interface Recovery {

@@ -15,7 +15,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
-from test_arrangements import ITINERARY
+from test_arrangements import ITINERARY, MULTI_ITINERARY
 
 from app.agent import present_arrangements, present_products
 from app.db.travel import TravelStore
@@ -106,8 +106,24 @@ async def stream(messages, info):
             await anyio.sleep(2)
             yield "接下来一起确定出发日期。"
             return
-        if str(prompt) in ("展示方案", "换酒店"):
-            plan = TravelArrangements.model_validate(ITINERARY)
+        if str(prompt) in (
+            "展示方案",
+            "换酒店",
+            "多城市方案",
+            "自驾轮渡方案",
+            "打车轮渡方案",
+        ):
+            plan = TravelArrangements.model_validate(
+                MULTI_ITINERARY if prompt == "多城市方案" else ITINERARY
+            )
+            if prompt in ("自驾轮渡方案", "打车轮渡方案"):
+                plan.transports[0].type = (
+                    "taxi" if prompt == "打车轮渡方案" else "drive"
+                )
+                plan.transports[0].number = None
+                plan.transports[0].purchase_url = None
+                plan.transports[1].type = "ferry"
+                plan.transports[1].number = None
             if prompt == "换酒店":
                 plan.stays[0].hotel = "新的测试酒店"
             yield {

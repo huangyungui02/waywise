@@ -13,29 +13,27 @@ from app.models.arrangements import TravelArrangements
 from app.models.products import Product
 
 ITINERARY = {
-    "origin": "上海",
-    "destination": "杭州",
-    "outbound": {
-        "type": "train",
-        "name": "G123",
-        "number": "G123",
-        "departure_point": "上海虹桥",
-        "arrival_point": "杭州东",
-        "departure_time": "2026-12-04T09:00:00",
-        "arrival_time": "2026-12-04T10:00:00",
-        "purchase_url": "https://example.com/train",
-        "purchased": False,
-    },
-    "inbound": {
-        "type": "flight",
-        "name": "MU1234",
-        "number": "MU1234",
-        "departure_point": "杭州萧山机场",
-        "arrival_point": "上海虹桥机场",
-        "departure_time": "2026-12-06T18:00:00",
-        "arrival_time": "2026-12-06T19:00:00",
-        "purchased": True,
-    },
+    "transports": [
+        {
+            "type": "train",
+            "number": "G123",
+            "departure_station": "上海虹桥",
+            "arrival_station": "杭州东",
+            "departure_time": "2026-12-04T09:00:00",
+            "arrival_time": "2026-12-04T10:00:00",
+            "purchase_url": "https://example.com/train",
+            "purchased": False,
+        },
+        {
+            "type": "flight",
+            "number": "MU1234",
+            "departure_station": "杭州萧山机场",
+            "arrival_station": "上海虹桥机场",
+            "departure_time": "2026-12-06T18:00:00",
+            "arrival_time": "2026-12-06T19:00:00",
+            "purchased": True,
+        },
+    ],
     "stays": [
         {
             "hotel": "测试酒店",
@@ -49,6 +47,69 @@ ITINERARY = {
 }
 
 
+MULTI_ITINERARY = deepcopy(ITINERARY)
+MULTI_ITINERARY["transports"].insert(
+    1,
+    {
+        **ITINERARY["transports"][0],
+        "number": "G456",
+        "departure_station": "杭州东",
+        "arrival_station": "南京南",
+        "departure_time": "2026-12-05T10:00:00",
+        "arrival_time": "2026-12-05T12:00:00",
+        "purchased": True,
+    },
+)
+MULTI_ITINERARY["transports"][-1].update(departure_station="南京禄口机场")
+MULTI_ITINERARY["stays"][0]["check_out"] = "2026-12-05"
+MULTI_ITINERARY["stays"].append(
+    {
+        **ITINERARY["stays"][0],
+        "hotel": "南京测试酒店",
+        "city": "南京",
+        "check_in": "2026-12-05",
+    }
+)
+
+
+def test_multi_city_arrangements():
+    assert TravelArrangements.model_validate(MULTI_ITINERARY).issues() == []
+
+
+@pytest.mark.parametrize(
+    "change,expected",
+    [
+        (lambda t: t["stays"].pop(), "2026-12-05 晚住宿缺失"),
+    ],
+)
+def test_multi_city_invalid_arrangements(change, expected):
+    itinerary = deepcopy(MULTI_ITINERARY)
+    change(itinerary)
+    assert expected in " ".join(TravelArrangements.model_validate(itinerary).issues())
+
+
+def test_overnight_transport_and_early_arrival_hotel(itinerary):
+    itinerary["transports"][0].update(
+        departure_time="2026-12-03T22:00:00", arrival_time="2026-12-04T06:00:00"
+    )
+    itinerary["transports"][-1].update(
+        departure_time="2026-12-06T22:00:00", arrival_time="2026-12-07T06:00:00"
+    )
+    assert TravelArrangements.model_validate(itinerary).issues() == []
+    itinerary["stays"][0]["check_in"] = "2026-12-03"
+    assert TravelArrangements.model_validate(itinerary).issues() == []
+    itinerary["stays"][0]["check_out"] = "2026-12-05"
+    assert "2026-12-05 晚住宿缺失" in " ".join(
+        TravelArrangements.model_validate(itinerary).issues()
+    )
+
+
+def test_route_requires_at_least_one_transport(itinerary):
+    itinerary["transports"] = []
+    with pytest.raises(ValidationError):
+        TravelArrangements.model_validate(itinerary)
+
+
 @pytest.fixture
 def itinerary():
     return deepcopy(ITINERARY)
@@ -56,8 +117,8 @@ def itinerary():
 
 def test_valid_arrangements_and_same_day_return(itinerary):
     assert TravelArrangements.model_validate(itinerary).issues() == []
-    itinerary["inbound"]["departure_time"] = "2026-12-04T18:00:00"
-    itinerary["inbound"]["arrival_time"] = "2026-12-04T19:00:00"
+    itinerary["transports"][1]["departure_time"] = "2026-12-04T18:00:00"
+    itinerary["transports"][1]["arrival_time"] = "2026-12-04T19:00:00"
     itinerary["stays"] = []
     assert TravelArrangements.model_validate(itinerary).issues() == []
 
@@ -66,11 +127,9 @@ def test_valid_arrangements_and_same_day_return(itinerary):
     "change,expected",
     [
         (
-            lambda t: t["inbound"].update(departure_time="2026-12-04T08:00:00"),
+            lambda t: t["transports"][1].update(departure_time="2026-12-04T08:00:00"),
             "依次递增",
         ),
-        (lambda t: t.update(destination="上海"), "不能相同"),
-        (lambda t: t["outbound"].update(purchase_url=None), "购买链接"),
         (lambda t: t["stays"][0].update(check_out="2026-12-05"), "2026-12-05"),
         (lambda t: t["stays"].append(deepcopy(t["stays"][0])), "重复"),
         (lambda t: t["stays"][0].update(check_out="2026-12-03"), "退房"),
@@ -83,7 +142,7 @@ def test_invalid_arrangements(itinerary, change, expected):
 
 
 def test_transport_schema(itinerary):
-    itinerary["outbound"]["type"] = "car"
+    itinerary["transports"][0]["type"] = "car"
     with pytest.raises(ValidationError):
         TravelArrangements.model_validate(itinerary)
 
@@ -188,26 +247,23 @@ def test_time_is_a_tool(configured):
 
 
 def test_bus_to_scenic_destination(itinerary):
-    itinerary.update(origin="成都", destination="四姑娘山")
-    itinerary["outbound"].update(
+    itinerary["transports"][0].update(
         type="bus",
-        name="成都至四姑娘山景区直通车",
         number=None,
-        departure_point="成都茶店子客运站",
-        arrival_point="四姑娘山镇停车场",
+        departure_station="成都茶店子客运站",
+        arrival_station="四姑娘山镇停车场",
     )
-    itinerary["inbound"].update(
+    itinerary["transports"][1].update(
         type="bus",
-        name="四姑娘山至成都直通车",
         number=None,
-        departure_point="四姑娘山镇停车场",
-        arrival_point="成都东站",
+        departure_station="四姑娘山镇停车场",
+        arrival_station="成都东站",
     )
     itinerary["stays"][0].update(city="小金县", address="四姑娘山镇")
     arrangements = TravelArrangements.model_validate(itinerary)
     assert arrangements.issues() == []
-    assert arrangements.outbound.number is None
-    del itinerary["outbound"]["departure_time"]
+    assert arrangements.transports[0].number is None
+    del itinerary["transports"][0]["departure_time"]
     with pytest.raises(ValidationError):
         TravelArrangements.model_validate(itinerary)
 
@@ -226,8 +282,8 @@ async def test_arrangements_store_save_update_isolation_and_delete(
     await store.arrangements.present("chat-b", arrangements, "b1")
     await store.arrangements.confirm("chat-b")
     updated = arrangements.model_copy(deep=True)
-    updated.outbound.purchased = True
-    updated.outbound.purchase_url = None
+    updated.transports[0].purchased = True
+    updated.transports[0].purchase_url = None
     await store.arrangements.present("chat-a", updated, "a2")
     assert (await store.arrangements.get("chat-a")) == arrangements
     store = await store_factory(database=database)
@@ -308,3 +364,54 @@ async def test_delete_conversation_clears_all_stores(
         "pending_arrangements"
     ] == arrangements
     assert len(await reopened.products.list("other")) == 1
+
+
+@pytest.mark.parametrize("kind", ["train", "flight", "bus", "drive", "taxi", "ferry"])
+@pytest.mark.anyio
+async def test_transport_can_be_confirmed_without_purchase_or_link(
+    itinerary, kind, tmp_path, store_factory
+):
+    leg = itinerary["transports"][0]
+    leg.update(type=kind, purchased=False, purchase_url=None)
+    arrangements = TravelArrangements.model_validate(itinerary)
+    assert arrangements.issues() == []
+    store = await store_factory(database=tmp_path / "travel.db")
+    await store.arrangements.present("chat-a", arrangements, "proposal")
+    confirmed = await store.arrangements.confirm("chat-a", "proposal")
+    assert confirmed.transports[0].purchased is False
+    assert confirmed.transports[0].purchase_url is None
+    assert await store.arrangements.get("chat-a") == arrangements
+
+
+@pytest.mark.parametrize("with_stay", [False, True])
+def test_one_way_trip_can_end_with_long_stay(itinerary, with_stay):
+    itinerary["transports"] = itinerary["transports"][:1]
+    if with_stay:
+        itinerary["stays"][0]["check_out"] = "2027-01-04"
+    else:
+        itinerary["stays"] = []
+    assert TravelArrangements.model_validate(itinerary).issues() == []
+
+
+def test_multi_city_trip_can_end_elsewhere():
+    itinerary = deepcopy(MULTI_ITINERARY)
+    itinerary["transports"].pop()
+    assert TravelArrangements.model_validate(itinerary).issues() == []
+
+
+@pytest.mark.parametrize(
+    "departure,arrival",
+    [
+        ("2026-12-04T01:00:00Z", "2026-12-04T10:00:00+08:00"),
+        ("2026-12-04T09:00:00", "2026-12-04T02:00:00Z"),
+    ],
+)
+def test_transport_accepts_standard_datetime_and_normalizes_to_beijing(
+    itinerary, departure, arrival
+):
+    itinerary["transports"][0].update(departure_time=departure, arrival_time=arrival)
+    arrangements = TravelArrangements.model_validate(itinerary)
+    assert arrangements.issues() == []
+    leg = arrangements.transports[0]
+    assert leg.departure_time.isoformat() == "2026-12-04T09:00:00+08:00"
+    assert leg.arrival_time.isoformat() == "2026-12-04T10:00:00+08:00"

@@ -168,7 +168,10 @@ async def test_confirmed_arrangements_persists_and_deletes(
             assert "present_arrangements" in response.text
             pending = client.get(f"/api/conversations/{cid}").json()
             assert pending["arrangements"] is None
-            assert pending["pending_arrangements"]["destination"] == "杭州"
+            assert (
+                pending["pending_arrangements"]["transports"][0]["arrival_station"]
+                == "杭州东"
+            )
             assert (
                 client.post(
                     f"/api/conversations/{cid}/proposals/old/confirm"
@@ -192,7 +195,7 @@ async def test_confirmed_arrangements_persists_and_deletes(
             )
             assert "交通住宿已确认" in response.text
             data = client.get(f"/api/conversations/{cid}").json()
-            assert data["arrangements"]["outbound"]["number"] == "G123"
+            assert data["arrangements"]["transports"][0]["number"] == "G123"
             assert "present_arrangements" in str(data["messages"])
         assert (
             await (
