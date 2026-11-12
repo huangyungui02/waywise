@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+from pg_database import pg_database
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import anyio
@@ -69,7 +71,7 @@ settings = Settings(
     access_token="offline-access-token",
     DASHSCOPE_API_KEY="test",
     AMAP_MAPS_API_KEY="test",
-    database_path=folder / "travel.db",
+    database_url=pg_database(folder / "travel.db"),
     logfire_token="",
 )
 with (

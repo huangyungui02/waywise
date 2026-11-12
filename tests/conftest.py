@@ -1,6 +1,9 @@
 """测试不读取本地 Logfire 凭据，也不向远程导出遥测。"""
 
+from pathlib import Path
+
 import pytest
+from pg_database import pg_database
 from starlette.testclient import TestClient
 
 
@@ -79,6 +82,21 @@ async def store_factory():
     async with AsyncExitStack() as stack:
 
         async def create(database):
-            return await stack.enter_async_context(TravelStore(database))
+            url = pg_database(database) if isinstance(database, Path) else database
+            return await stack.enter_async_context(TravelStore(url))
 
         yield create
+
+
+@pytest.fixture(autouse=True)
+def postgres_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_URL", pg_database(tmp_path / "default"))
+    monkeypatch.delenv("DBOS_DATABASE_URL", raising=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_postgres():
+    from pg_database import drop_test_databases
+
+    yield
+    drop_test_databases()

@@ -6,6 +6,7 @@ import subprocess
 
 import httpx2
 import pytest
+from pg_database import pg_database
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import (
     CompactionPart,
@@ -217,7 +218,7 @@ def test_flyai_execution_errors(configured, monkeypatch, outcome):
 
 def test_web_endpoints(app_factory, configured, tmp_path):
 
-    settings = Settings(database_path=tmp_path / "test.db")
+    settings = Settings(database_url=pg_database(tmp_path / "test.db"))
     with TestClient(app_factory(settings), base_url="http://127.0.0.1") as client:
         assert client.get("/api/health").status_code == 200
         response = client.get("/api/conversations")
@@ -227,7 +228,7 @@ def test_web_endpoints(app_factory, configured, tmp_path):
 
 def test_ios_cors(app_factory, configured, tmp_path):
     settings = Settings(
-        database_path=tmp_path / "test.db",
+        database_url=pg_database(tmp_path / "test.db"),
         cors_origins=["capacitor://localhost"],
     )
     with TestClient(app_factory(settings)) as client:
@@ -283,7 +284,9 @@ def test_web_allows_more_than_50_model_requests(app_factory, configured, tmp_pat
     with (
         agent.override(model=FunctionModel(stream_function=stream_model)),
         TestClient(
-            app_factory(Settings(database_path=tmp_path / "test.db"), agent),
+            app_factory(
+                Settings(database_url=pg_database(tmp_path / "test.db")), agent
+            ),
             base_url="http://127.0.0.1",
         ) as client,
     ):

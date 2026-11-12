@@ -9,7 +9,6 @@ from dbos import DBOS
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_ai import Agent
-from sqlalchemy.engine import URL
 
 from app.agent import create_agent
 from app.chat.retention import clean_workflow_history
@@ -22,17 +21,13 @@ from app.settings import Settings
 def create_app() -> FastAPI:
     settings = Settings()
 
-    database = settings.database_path
-    database.parent.mkdir(parents=True, exist_ok=True)
-    store = TravelStore(database=database)
-    dbos_database = settings.dbos_database_path or database.with_name("dbos.sqlite")
-    dbos_database.parent.mkdir(parents=True, exist_ok=True)
+    store = TravelStore(settings.database_url.get_secret_value())
     DBOS(
         config={
             "name": "travel-agent",
-            "system_database_url": URL.create(
-                "sqlite", database=str(dbos_database)
-            ).render_as_string(hide_password=False),
+            "system_database_url": (
+                settings.dbos_database_url or settings.database_url
+            ).get_secret_value(),
             "enable_otlp": bool(settings.logfire_token.get_secret_value()),
         }
     )

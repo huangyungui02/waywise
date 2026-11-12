@@ -1,6 +1,7 @@
 """商品清单的持久化、去重与会话隔离。"""
 
 import pytest
+from pg_database import pg_database
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from starlette.testclient import TestClient
@@ -49,12 +50,12 @@ async def test_products_update_and_reopen(tmp_path, store_factory):
 async def test_product_endpoints(app_factory, tmp_path, store_factory):
     settings = Settings(
         _env_file=None,
-        database_path=tmp_path / "api.db",
+        database_url=pg_database(tmp_path / "api.db"),
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map",
         logfire_token="",
     )
-    store = await store_factory(settings.database_path)
+    store = await store_factory(settings.database_url.get_secret_value())
     with TestClient(app_factory(settings, Agent(TestModel()))) as client:
         first = client.post("/api/conversations").json()["id"]
         other = client.post("/api/conversations").json()["id"]
@@ -88,3 +89,24 @@ async def test_product_endpoints(app_factory, tmp_path, store_factory):
         assert client.delete(f"/api/conversations/{first}").status_code == 204
         assert (await store.products.list(first)) == []
         assert client.delete(f"/api/conversations/{first}{path}").status_code == 404
+
+
+@pytest.mark.anyio
+async def test_concurrent_product_upserts_keep_one_stable_record(
+    tmp_path, store_factory
+):
+    import asyncio
+
+    store = await store_factory(tmp_path / "concurrent")
+    product = Product(
+        name="酒店", description="近车站", purchase_url="https://example.com/hotel"
+    )
+    await asyncio.gather(*(store.products.save("chat", [product]) for _ in range(8)))
+    original = (await store.products.list("chat"))[0]
+    product.price = "¥120起/晚"
+    await asyncio.gather(*(store.products.save("chat", [product]) for _ in range(8)))
+    records = await store.products.list("chat")
+    assert len(records) == 1
+    assert records[0].id == original.id
+    assert records[0].price == product.price
+    assert records[0].updated_at.utcoffset().total_seconds() == 0

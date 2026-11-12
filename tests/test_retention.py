@@ -1,8 +1,9 @@
-"""在真实 DBOS/SQLite 中验证执行历史过期和业务历史独立保存。"""
+"""在真实 DBOS/PostgreSQL 中验证执行历史过期和业务历史独立保存。"""
 
 from datetime import UTC, datetime, timedelta
 
 from dbos import DBOS
+from pg_database import pg_database
 from pydantic_ai import Agent
 from pydantic_ai.models.function import FunctionModel
 from starlette.testclient import TestClient
@@ -25,7 +26,7 @@ def test_retention_preserves_chat_and_active_workflows(app_factory, tmp_path):
         _env_file=None,
         DASHSCOPE_API_KEY="test",
         AMAP_MAPS_API_KEY="test",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
     )
     backend = app_factory(settings, Agent(FunctionModel(stream_function=model)))
     with TestClient(backend) as client:
@@ -51,10 +52,10 @@ def test_retention_preserves_chat_and_active_workflows(app_factory, tmp_path):
         assert DBOS.get_workflow_status(active.workflow_id) is not None
 
         # 官方删除 API 同时清除了流，且业务历史仍可正常读取并继续聊天。
-        import sqlite3
+        import psycopg
 
-        with sqlite3.connect(tmp_path / "dbos.sqlite") as conn:
-            assert conn.execute("SELECT count(*) FROM streams").fetchone()[0] == 0
+        with psycopg.connect(settings.database_url.get_secret_value()) as conn:
+            assert conn.execute("SELECT count(*) FROM dbos.streams").fetchone()[0] == 0
         after = client.get(f"/api/conversations/{cid}").json()
         assert after["messages"] == before["messages"]
         assert after["summary"]["outcome"] == "completed"

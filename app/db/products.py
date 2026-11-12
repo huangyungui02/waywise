@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.db.tables import ProductRecord
@@ -19,25 +20,24 @@ class ProductStore:
         async with AsyncSession(self.engine) as session:
             for product in products:
                 url = str(product.purchase_url)
-                record = (
-                    await session.scalars(
-                        select(ProductRecord).where(
-                            ProductRecord.conversation_id == conversation_id,
-                            ProductRecord.purchase_url == url,
-                        )
+                statement = insert(ProductRecord).values(
+                    conversation_id=conversation_id,
+                    purchase_url=url,
+                    data=product.model_dump(mode="json"),
+                    updated_at=datetime.now(UTC),
+                )
+                await session.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[
+                            ProductRecord.conversation_id,
+                            ProductRecord.purchase_url,
+                        ],
+                        set_={
+                            "data": statement.excluded.data,
+                            "updated_at": statement.excluded.updated_at,
+                        },
                     )
-                ).first()
-                if record is None:
-                    record = ProductRecord(
-                        conversation_id=conversation_id,
-                        purchase_url=url,
-                        data=product.model_dump_json(),
-                        updated_at=datetime.now(UTC),
-                    )
-                else:
-                    record.data = product.model_dump_json()
-                    record.updated_at = datetime.now(UTC)
-                session.add(record)
+                )
             await session.commit()
 
     async def list(self, conversation_id: str) -> list[SavedProduct]:
@@ -51,9 +51,9 @@ class ProductStore:
             ).all()
             return [
                 SavedProduct(
-                    **Product.model_validate_json(record.data).model_dump(),
+                    **Product.model_validate(record.data).model_dump(),
                     id=record.id,
-                    updated_at=record.updated_at.replace(tzinfo=UTC),
+                    updated_at=record.updated_at.astimezone(UTC),
                 )
                 for record in records
             ]

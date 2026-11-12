@@ -1,22 +1,25 @@
-"""旅行咨询的业务存储入口，会话、交通住宿与商品共用同一个 SQLite 文件。"""
+"""旅行咨询的业务存储入口，会话、交通住宿与商品共用 PostgreSQL 数据库。"""
 
-from pathlib import Path
-
-from sqlalchemy.engine import URL
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy import delete
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.db.arrangements import ArrangementStore
 from app.db.conversations import ConversationStore
 from app.db.products import ProductStore
-from app.db.tables import Base
+from app.db.tables import ArrangementsRecord, Base, ConversationRow, ProductRecord
 
 
 class TravelStore:
-    def __init__(self, database: Path):
+    def __init__(self, database: str):
         # 三个 Store 共用异步 Engine，每个操作独立创建 Session。
+        url = make_url(database)
+        if url.get_backend_name() != "postgresql":
+            raise ValueError("DATABASE_URL 必须使用 PostgreSQL")
         self.engine = create_async_engine(
-            URL.create("sqlite+aiosqlite", database=str(database)), poolclass=NullPool
+            url.set(drivername="postgresql+psycopg"),
+            pool_pre_ping=True,
+            hide_parameters=True,
         )
         self.conversations = ConversationStore(self.engine)
         self.arrangements = ArrangementStore(self.engine)
@@ -31,6 +34,10 @@ class TravelStore:
         await self.engine.dispose()
 
     async def delete_conversation(self, conversation_id: str) -> None:
-        await self.conversations.delete(conversation_id)
-        await self.arrangements.delete(conversation_id)
-        await self.products.delete_all(conversation_id)
+        async with AsyncSession(self.engine) as session, session.begin():
+            for table, column in (
+                (ConversationRow, ConversationRow.id),
+                (ArrangementsRecord, ArrangementsRecord.conversation_id),
+                (ProductRecord, ProductRecord.conversation_id),
+            ):
+                await session.execute(delete(table).where(column == conversation_id))

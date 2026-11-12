@@ -1,4 +1,4 @@
-"""浏览器测试专用：真实 FastAPI/SQLite/流协议，使用离线模型。"""
+"""浏览器测试专用：真实 FastAPI/PostgreSQL/流协议，使用离线模型。"""
 
 import json
 import os
@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import anyio
 from dbos import DBOS
+from pg_database import pg_database
 from pydantic_ai import Agent, RunContext, ToolOutput
 from pydantic_ai.durable_exec.dbos import DBOSDurability
 from pydantic_ai.messages import (
@@ -196,7 +197,7 @@ agent.tool(present_products)
 @agent.tool
 @DBOS.step()
 async def confirm_arrangements(ctx: RunContext[TravelStore]) -> dict:
-    """浏览器测试的确认入口；使用真实 SQLite 确认逻辑。"""
+    """浏览器测试的确认入口；使用真实 PostgreSQL 确认逻辑。"""
     assert ctx.conversation_id is not None
     return {
         "arrangements": (
@@ -238,7 +239,7 @@ def create_app():
         access_token="offline-access-token",
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map-key",
-        database_path=Path(os.environ["UI_TEST_DATABASE"]),
+        database_url=pg_database(Path(os.environ["UI_TEST_DATABASE"])),
         logfire_token="",
     )
     with (

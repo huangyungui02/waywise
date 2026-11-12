@@ -38,7 +38,7 @@ class ConversationStore(BaseConversationStore):
     async def read_record(self, conversation_id: str) -> ConversationRecord | None:
         async with AsyncSession(self.engine) as session:
             row = await session.get(ConversationRow, conversation_id)
-            return RECORD.validate_json(row.record_data) if row else None
+            return RECORD.validate_python(row.record_data) if row else None
 
     async def read_records(
         self, *, scope: str | None = None, limit: int | None = None
@@ -52,7 +52,7 @@ class ConversationStore(BaseConversationStore):
             if limit is not None:
                 query = query.limit(limit)
             return [
-                RECORD.validate_json(row.record_data)
+                RECORD.validate_python(row.record_data)
                 for row in (await session.scalars(query))
             ]
 
@@ -64,7 +64,7 @@ class ConversationStore(BaseConversationStore):
             return ConversationEntry(
                 id=row.id,
                 parent_id=row.parent_id,
-                message=MESSAGE.validate_json(row.message_data),
+                message=MESSAGE.validate_python(row.message_data),
             )
 
     async def write_record(
@@ -78,7 +78,7 @@ class ConversationStore(BaseConversationStore):
             values = {
                 "scope": record.scope,
                 "revision": record.revision,
-                "record_data": RECORD.dump_json(record).decode(),
+                "record_data": RECORD.dump_python(record, mode="json"),
                 "updated_at": record.updated_at,
             }
             try:
@@ -97,7 +97,7 @@ class ConversationStore(BaseConversationStore):
                     )
                     if result.scalar_one_or_none() is None:
                         raise ConversationConflict(record.conversation_id)
-                # 更新或插入会话后已持有 SQLite 写锁，检查与插入都在同一事务内。
+                # revision 条件更新持有会话行锁，日志追加与记录更新在同一事务提交。
                 if (
                     record.head_id is not None
                     and record.head_id not in {entry.id for entry in new_entries}
@@ -110,7 +110,9 @@ class ConversationStore(BaseConversationStore):
                         ConversationEntryRow(
                             id=entry.id,
                             parent_id=entry.parent_id,
-                            message_data=MESSAGE.dump_json(entry.message).decode(),
+                            message_data=MESSAGE.dump_python(
+                                entry.message, mode="json"
+                            ),
                         )
                         for entry in new_entries
                     ]

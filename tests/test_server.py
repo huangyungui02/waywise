@@ -1,6 +1,7 @@
-"""验证真实 SQLite 与官方适配器在多轮、重启和错误场景下的行为。"""
+"""验证真实 PostgreSQL 与官方适配器在多轮、重启和错误场景下的行为。"""
 
 import pytest
+from pg_database import pg_database
 from pydantic_ai.direct import model_request
 from pydantic_ai.messages import ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
@@ -39,7 +40,7 @@ def test_first_reply_names_conversation_without_thinking(
         agent.override(model=FunctionModel(stream_function=reply)),
         TestClient(
             app_factory(
-                Settings(database_path=tmp_path / "naming.db"),
+                Settings(database_url=pg_database(tmp_path / "naming.db")),
                 agent,
             )
         ) as client,
@@ -79,7 +80,7 @@ def request(text):
 
 
 def test_history_restart_and_server_owned_context(app_factory, configured, tmp_path):
-    settings = Settings(database_path=tmp_path / "travel.db")
+    settings = Settings(database_url=pg_database(tmp_path / "travel.db"))
     seen = []
 
     async def model(messages, info):
@@ -137,7 +138,7 @@ def test_history_restart_and_server_owned_context(app_factory, configured, tmp_p
 async def test_confirmed_arrangements_persists_and_deletes(
     app_factory, configured, tmp_path, itinerary, store_factory
 ):
-    settings = Settings(database_path=tmp_path / "travel.db")
+    settings = Settings(database_url=pg_database(tmp_path / "travel.db"))
     agent = agent_module.create_agent()
     count = 0
 
@@ -197,7 +198,7 @@ async def test_confirmed_arrangements_persists_and_deletes(
             assert "present_arrangements" in str(data["messages"])
         assert (
             await (
-                await store_factory(database=settings.database_path)
+                await store_factory(database=settings.database_url.get_secret_value())
             ).arrangements.get(cid)
         ) == TravelArrangements.model_validate(itinerary)
 
@@ -209,7 +210,7 @@ async def test_confirmed_arrangements_persists_and_deletes(
             client.delete(f"/api/conversations/{cid}")
         assert (
             await (
-                await store_factory(database=settings.database_path)
+                await store_factory(database=settings.database_url.get_secret_value())
             ).arrangements.get(cid)
         ) is None
 
@@ -217,7 +218,7 @@ async def test_confirmed_arrangements_persists_and_deletes(
 def test_failed_run_retains_question_and_marks_interrupted(
     app_factory, configured, tmp_path
 ):
-    settings = Settings(database_path=tmp_path / "travel.db")
+    settings = Settings(database_url=pg_database(tmp_path / "travel.db"))
 
     async def broken(messages, info):
         raise RuntimeError("测试中断")
@@ -245,8 +246,10 @@ async def test_legacy_interrupted_conversation_can_continue(
 ):
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-    settings = Settings(database_path=tmp_path / "legacy.db")
-    store = (await store_factory(settings.database_path)).conversations
+    settings = Settings(database_url=pg_database(tmp_path / "legacy.db"))
+    store = (
+        await store_factory(settings.database_url.get_secret_value())
+    ).conversations
     created = await store.create()
     conversation = await store.load(created.id)
     await store.save_messages(
@@ -287,7 +290,7 @@ async def test_legacy_interrupted_conversation_can_continue(
 def test_conversation_dependencies_reject_missing_conversation(
     app_factory, configured, tmp_path, method, path, body
 ):
-    backend = app_factory(Settings(database_path=tmp_path / "missing.db"))
+    backend = app_factory(Settings(database_url=pg_database(tmp_path / "missing.db")))
     with TestClient(backend) as client:
         response = client.request(
             method, f"/api/conversations/missing{path}", json=body

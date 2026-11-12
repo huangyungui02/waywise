@@ -1,6 +1,7 @@
 """个人 Bearer 令牌覆盖所有业务入口，健康检查与预检保持可用。"""
 
 import pytest
+from pg_database import pg_database
 from starlette.testclient import TestClient
 
 from app.settings import Settings
@@ -22,7 +23,7 @@ def test_business_api_authentication(app_factory, tmp_path):
             _env_file=None,
             DASHSCOPE_API_KEY="test",
             AMAP_MAPS_API_KEY="test",
-            database_path=tmp_path / "travel.db",
+            database_url=pg_database(tmp_path / "travel.db"),
             cors_origins=["capacitor://localhost"],
         )
     )

@@ -6,6 +6,7 @@ import logfire
 import pytest
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from pg_database import pg_database
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, TextPart, ToolReturnPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
@@ -64,7 +65,7 @@ def test_request_agent_tool_trace_and_content(
         _env_file=None,
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map-key",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
         logfire_token="test-write-token",
         logfire_include_content=include_content,
     )
@@ -135,7 +136,7 @@ def test_no_token_does_not_configure_logfire(app_factory, monkeypatch, tmp_path)
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map-key",
         logfire_token="",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
     )
     with TestClient(
         app_factory(settings, Agent("test", deps_type=TravelStore))

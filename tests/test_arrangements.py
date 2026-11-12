@@ -416,3 +416,21 @@ def test_transport_accepts_standard_datetime_and_normalizes_to_beijing(
     leg = arrangements.transports[0]
     assert leg.departure_time.isoformat() == "2026-12-04T09:00:00+08:00"
     assert leg.arrival_time.isoformat() == "2026-12-04T10:00:00+08:00"
+
+
+@pytest.mark.anyio
+async def test_concurrent_present_and_confirm(tmp_path, itinerary, store_factory):
+    import asyncio
+
+    store = await store_factory(tmp_path / "concurrent")
+    arrangements = TravelArrangements.model_validate(itinerary)
+    await asyncio.gather(
+        *(store.arrangements.present("chat", arrangements, "same") for _ in range(8))
+    )
+    confirmed = await asyncio.gather(
+        *(store.arrangements.confirm("chat", "same") for _ in range(8))
+    )
+    assert all(value == arrangements for value in confirmed)
+    state = await store.arrangements.get_state("chat")
+    assert state["pending_arrangements"] is None
+    assert state["confirmed_id"] == "same"

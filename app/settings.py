@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     )
 
     access_token: SecretStr = Field(min_length=1)
-    database_path: Path = ROOT / "data" / "travel.db"
-    dbos_database_path: Path | None = None
+    database_url: SecretStr = Field(min_length=1)
+    dbos_database_url: SecretStr | None = None
     dbos_retention_days: int = Field(default=7, ge=1)
     max_concurrent_runs: int = Field(default=4, ge=1)
     cors_origins: list[str] = Field(default_factory=list)

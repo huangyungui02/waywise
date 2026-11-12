@@ -1,4 +1,4 @@
-"""使用真实 DBOS/SQLite 和离线模型验证执行、排队、停止与重放。"""
+"""使用真实 DBOS/PostgreSQL 和离线模型验证执行、排队、停止与重放。"""
 
 import threading
 import time
@@ -6,6 +6,7 @@ import time
 import anyio
 import httpx2
 import pytest
+from pg_database import pg_database
 from pydantic_ai import Agent
 from pydantic_ai.models.function import FunctionModel
 from starlette.testclient import TestClient
@@ -67,7 +68,7 @@ def test_disconnect_replay_and_stop(app_factory, tmp_path, stop):
         _env_file=None,
         DASHSCOPE_API_KEY="test",
         AMAP_MAPS_API_KEY="test",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
         max_concurrent_runs=1,
     )
     backend = app_factory(settings, agent)
@@ -133,7 +134,7 @@ def test_capacity_queues_instead_of_rejecting(app_factory, tmp_path):
         _env_file=None,
         DASHSCOPE_API_KEY="test",
         AMAP_MAPS_API_KEY="test",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
         max_concurrent_runs=1,
     )
     backend = app_factory(settings, Agent(FunctionModel(stream_function=model)))
@@ -160,6 +161,7 @@ def test_capacity_queues_instead_of_rejecting(app_factory, tmp_path):
 
 @pytest.mark.parametrize("graceful", [False, True])
 def test_process_restart_recovers_steps_and_replaces_partial_output(tmp_path, graceful):
+    pg_database(tmp_path / "travel.db")
     import json
     import subprocess
     import sys
@@ -222,7 +224,7 @@ def test_startup_failure_ends_stream_and_releases_queue(
         _env_file=None,
         DASHSCOPE_API_KEY="test",
         AMAP_MAPS_API_KEY="test",
-        database_path=tmp_path / "travel.db",
+        database_url=pg_database(tmp_path / "travel.db"),
     )
 
     async def model(messages, info):

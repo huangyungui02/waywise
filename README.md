@@ -20,6 +20,8 @@ openssl rand -hex 32
 | 配置项 | 是否必填 | 说明 |
 | --- | --- | --- |
 | `ACCESS_TOKEN` | 是 | 个人 API 访问令牌，不能为空 |
+| `DATABASE_URL` | 直接运行 Python 必填 | PostgreSQL 连接 URL；Compose 自动设置 |
+| `DBOS_DATABASE_URL` | 否 | 默认与业务数据库共用，DBOS 使用独立 schema |
 | `DASHSCOPE_API_KEY` | 是 | [百炼 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
 | `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)的 Web 服务 Key |
 | `DOMAIN` | 生产必填 | 解析到服务器的真实域名，供 Caddy 自动申请 HTTPS 证书 |
@@ -44,7 +46,7 @@ Vite 将 `/api` 代理到后端，并使用根目录 `.env` 的 `ACCESS_TOKEN`�
 
 ## Docker 生产部署
 
-生产配置独立使用，只有后端和 Caddy，不构建或部署前端。服务器安装 Docker 和 Compose，配置 `.env`，
+生产配置独立使用，包含后端、PostgreSQL 和 Caddy，不构建或部署前端。服务器安装 Docker 和 Compose，配置 `.env`，
 将 `DOMAIN` 改成真实域名并解析到服务器，允许公网 TCP 80、443 访问，然后运行：
 
 ```bash
@@ -71,16 +73,23 @@ docker compose -f compose.prod.yml down
 
 ### 数据与备份
 
-业务数据在 `/app/data/travel.db`，DBOS 执行记录在 `/app/data/dbos.sqlite`，都保存在 `travel-data` 命名卷。
-Compose 固定这两个路径，根目录 `.env` 中的 `DATABASE_PATH` 只用于直接启动 Python 的开发方式。
-DBOS 在同一进程中运行，默认同时执行 4 个会话；已结束的执行记录保留 7 天并每小时清理，使用 `DBOS_RETENTION_DAYS` 调整。
-聊天历史和安排不受清理影响；SQLite 的空闲空间会被复用，文件不会立即缩小。
+业务数据与 DBOS 执行记录保存在 PostgreSQL 的 `waywise` 数据库，分别使用 `public` 和 `dbos` schema；持久卷为 `postgres-data`。
+Compose 内置数据库的用户名、密码和数据库名均为 `waywise`，仅供内部网络访问，无需配置数据库密码或连接地址。
+直接运行 Python 时需设置 `DATABASE_URL`；可用 `DBOS_DATABASE_URL` 将执行记录放到独立 PostgreSQL 数据库。
+首次启动会直接建表，不迁移原有数据。
+DBOS 默认同时执行 4 个会话；已结束的执行记录保留 7 天并每小时清理，使用 `DBOS_RETENTION_DAYS` 调整。聊天历史和安排不受清理影响。
 
-停服后备份整个数据目录，并将备份保存到服务器之外：
+备份数据库，并将备份保存到服务器之外：
+
+```bash
+docker compose -f compose.prod.yml exec -T postgres pg_dump -U waywise -d waywise -Fc > waywise.dump
+```
+
+恢复时先停止后端，将备份恢复到空数据库，再启动后端：
 
 ```bash
 docker compose -f compose.prod.yml stop travel-agent
-docker compose -f compose.prod.yml cp travel-agent:/app/data ./backup
+docker compose -f compose.prod.yml exec -T postgres pg_restore -U waywise -d waywise --no-owner < waywise.dump
 docker compose -f compose.prod.yml start travel-agent
 ```
 
@@ -117,7 +126,7 @@ Agent 运行、模型调用和工具调用（包括 `call_flyai`）的链路、�
 默认不采集对话和工具正文、二进制内容、HTTP 请求头与 FastAPI 解析后的请求参数，
 健康检查请求也不记录。开启正文采集后，旅行安排等信息会发送到 Logfire，
 请按实际排查需要配置。飞猪 CLI 内部没有单独埋点，链路显示整个 `call_flyai` 调用。
-SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储。
+PostgreSQL 负责保存聊天和已确认行程，Logfire 不替代业务存储。
 
 ## 如何使用
 
@@ -153,9 +162,9 @@ SQLite 仍负责保存聊天和已确认行程，Logfire 不替代业务存储�
 - 价格、余票、房态和退改规则以预订页面为准，售票期外可能无法查询。
 - 关闭页面、刷新或切换会话后，回复会继续生成；返回会话可查看最新输出并接收后续内容。点击“停止”才会取消生成，并保存已生成的部分回复。
 - 浏览器使用 IndexedDB 缓存已读取的消息以便快速预览；同步期间会显示提示，最终内容以服务端为准。清空浏览器缓存不会删除服务端历史。
-- 当前部署使用单节点、单后端进程和 SQLite。DBOS 默认同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整，超出后排队。同一版本服务重启后会恢复未完成的工作流；已完成的模型和工具步骤不重跑，中断中的步骤可能重新执行并产生额外调用费用。
+- 当前部署使用单节点、单后端进程和 PostgreSQL。DBOS 默认同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整，超出后排队。同一版本服务重启后会恢复未完成的工作流；已完成的模型和工具步骤不重跑，中断中的步骤可能重新执行并产生额外调用费用。
 - 未完成模型请求的部分输出会在恢复时被替换为重试结果。DBOS 不保证外部接口恰好调用一次；本项目不执行代下单与支付。
-- 更新代码会改变 DBOS 应用版本；部署新版本前请等待当前回复完成。SQLite 文件必须保存在持久化磁盘，当前不支持多副本部署。
+- 更新代码会改变 DBOS 应用版本；部署新版本前请等待当前回复完成。PostgreSQL 数据卷必须持久化；当前仍按单后端进程部署。
 - 使用个人 Bearer 令牌保护 API，无账户系统和多用户数据隔离；App 仅供个人安装使用。
 - Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
@@ -184,23 +193,29 @@ pnpm --dir frontend dev
 
 打开 Vite 打印的地址（通常为 `http://127.0.0.1:5173`）。
 API 文档位于 `http://127.0.0.1:7932/docs`。
-本地开发默认数据库为 `data/travel.db`，可通过 `DATABASE_PATH` 修改。
+本地开发需先准备 PostgreSQL，并在 `.env` 中设置 `DATABASE_URL`。
 FastAPI 只提供 API；网页由 Vite 提供，静态构建结果只用于 iOS 打包。
 
-运行离线测试：
+运行离线测试（需本地 PostgreSQL，测试角色具有 CREATE DATABASE 权限）。可在另一终端启动临时测试库：
 
 ```bash
-uv run python -m pytest -q
+docker run --rm --name waywise-test-postgres -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:55432:5432 postgres:18-bookworm
 ```
 
-浏览器测试会自动启动离线测试后端和前端，无需真实凭据：
+该测试库仅监听本机，不设置密码；正式部署使用上面的 Compose 配置。然后运行：
+
+```bash
+TEST_DATABASE_URL=postgresql://localhost:55432/postgres uv run python -m pytest -q
+```
+
+浏览器测试会自动启动离线测试后端和前端，无需旅游服务凭据；同样使用 `TEST_DATABASE_URL`（默认 `postgresql://localhost:55432/postgres`）：
 
 ```bash
 pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 ```
 
-Python 和浏览器测试均使用真实 DBOS、SQLite 与官方 FunctionModel/TestModel，不需要 Redis，
+Python 和浏览器测试均使用真实 DBOS、PostgreSQL 与官方 FunctionModel/TestModel，不需要 Redis，
 不调用真实模型或旅游服务。Python 测试包含独立进程被强制终止后的恢复验证。
 
 实际模型、地图和飞猪服务需要另行配置凭据并验证。

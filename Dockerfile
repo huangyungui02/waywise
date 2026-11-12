@@ -2,7 +2,6 @@ FROM node:22-bookworm-slim AS node
 
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
-# DBOS 的 SQLite 毫秒时间戳依赖 SQLite 3.42+ 的 subsec 支持。
 FROM python:3.13-slim-trixie
 COPY --from=uv /uv /usr/local/bin/uv
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -22,7 +21,6 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY app/ ./app/
 COPY skills/ ./skills/
 RUN useradd --create-home traveler \
-    && mkdir /app/data \
     && chown -R traveler:traveler /app
 USER traveler
 EXPOSE 7932
