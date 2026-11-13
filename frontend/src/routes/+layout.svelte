@@ -11,7 +11,7 @@
 	import * as Sheet from '#lib/components/ui/sheet/index.js';
 	import * as Dialog from '#lib/components/ui/alert-dialog/index.js';
 	import * as RenameDialog from '#lib/components/ui/dialog/index.js';
-	import { api, type Conversation } from '#lib/api.js';
+	import { api, logout, type Conversation } from '#lib/api.js';
 	import { forgetConversation } from '#lib/chat/cache.js';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
@@ -143,118 +143,134 @@
 					心之所向，皆为旅程。<br />随时开启一段漫游。
 				</p>{/each}
 		</nav>
+		<Button
+			variant="ghost"
+			onclick={async () => {
+				try {
+					await logout();
+					window.location.replace('/login');
+				} catch (cause) {
+					error = String(cause);
+				}
+			}}>退出登录</Button
+		>
+		<a class={buttonVariants({ variant: 'ghost' })} href={resolve('/account')}>修改密码</a>
 	</div>
 {/snippet}
-<div class="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
-	<aside
-		class="hidden w-60 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:block"
-	>
-		{@render sidebar()}
-	</aside>
-	<div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-		<header
-			class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-4 md:hidden"
+{#if page.url.pathname === '/login'}
+	{@render children()}
+{:else}
+	<div class="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
+		<aside
+			class="hidden w-60 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:block"
 		>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="liquid-glass pointer-events-auto size-11 rounded-full"
-				aria-label="打开旅行列表"
-				onclick={() => (mobileOpen = true)}><Menu /></Button
+			{@render sidebar()}
+		</aside>
+		<div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+			<header
+				class="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 px-4 pt-4 md:hidden"
 			>
-			<h1
-				class="liquid-glass mx-auto max-w-full truncate rounded-full px-4 py-2 text-center text-sm font-medium"
-				{title}
-			>
-				{title}
-			</h1>
-		</header>
-		{#if error}<p role="alert" class="p-3 text-sm text-destructive">
-				{error}<Button variant="ghost" onclick={() => (error = '')}>关闭错误提示</Button>
-			</p>{/if}
-		<main class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-			{@render children()}
-		</main>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="liquid-glass pointer-events-auto size-11 rounded-full"
+					aria-label="打开旅行列表"
+					onclick={() => (mobileOpen = true)}><Menu /></Button
+				>
+				<h1
+					class="liquid-glass mx-auto max-w-full truncate rounded-full px-4 py-2 text-center text-sm font-medium"
+					{title}
+				>
+					{title}
+				</h1>
+			</header>
+			{#if error}<p role="alert" class="p-3 text-sm text-destructive">
+					{error}<Button variant="ghost" onclick={() => (error = '')}>关闭错误提示</Button>
+				</p>{/if}
+			<main class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+				{@render children()}
+			</main>
+		</div>
 	</div>
-</div>
-<Sheet.Root bind:open={mobileOpen}
-	><Sheet.Content
-		side="left"
-		showCloseButton={false}
-		class="w-64 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-		style="--popover: var(--sidebar); --popover-foreground: var(--sidebar-foreground); --border: var(--sidebar-border)"
-		><Sheet.Header class="sr-only"
-			><Sheet.Title>我的旅行</Sheet.Title><Sheet.Description
-				>新建、切换或删除旅行会话</Sheet.Description
-			></Sheet.Header
-		>{@render sidebar()}</Sheet.Content
-	></Sheet.Root
->
-<Dialog.Root
-	open={Boolean(deleting)}
-	onOpenChange={(open) => {
-		if (!open && !removing) deleting = null;
-	}}
->
-	<Dialog.Content
-		><Dialog.Header
-			><Dialog.Title>移除这段旅行记录？</Dialog.Title><Dialog.Description
-				>将从历史记录中移除「{deleting?.title}」。已确认的行程安排也将一并清理。</Dialog.Description
-			></Dialog.Header
-		>
-		<Dialog.Footer
-			><Dialog.Cancel disabled={removing}>保留</Dialog.Cancel><Dialog.Action
-				disabled={removing}
-				onclick={(event) => {
-					event.preventDefault();
-					void remove();
-				}}>{removing ? '正在删除…' : '确认删除'}</Dialog.Action
-			></Dialog.Footer
-		>
-	</Dialog.Content>
-</Dialog.Root>
-
-<RenameDialog.Root
-	open={editing !== null}
-	onOpenChange={(open) => {
-		if (!open && !saving) editing = null;
-	}}
->
-	<RenameDialog.Content
-		showCloseButton={false}
-		onOpenAutoFocus={(event) => {
-			event.preventDefault();
-			document.getElementById('conversation-title')?.focus();
+	<Sheet.Root bind:open={mobileOpen}
+		><Sheet.Content
+			side="left"
+			showCloseButton={false}
+			class="w-64 p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+			style="--popover: var(--sidebar); --popover-foreground: var(--sidebar-foreground); --border: var(--sidebar-border)"
+			><Sheet.Header class="sr-only"
+				><Sheet.Title>我的旅行</Sheet.Title><Sheet.Description
+					>新建、切换或删除旅行会话</Sheet.Description
+				></Sheet.Header
+			>{@render sidebar()}</Sheet.Content
+		></Sheet.Root
+	>
+	<Dialog.Root
+		open={Boolean(deleting)}
+		onOpenChange={(open) => {
+			if (!open && !removing) deleting = null;
 		}}
 	>
-		<RenameDialog.Header>
-			<RenameDialog.Title>重命名</RenameDialog.Title>
-			<RenameDialog.Description>为这段旅行设置一个标题。</RenameDialog.Description>
-		</RenameDialog.Header>
-		<form
-			class="flex flex-col gap-4"
-			onsubmit={(event) => {
+		<Dialog.Content
+			><Dialog.Header
+				><Dialog.Title>移除这段旅行记录？</Dialog.Title><Dialog.Description
+					>将从历史记录中移除「{deleting?.title}」。已确认的行程安排也将一并清理。</Dialog.Description
+				></Dialog.Header
+			>
+			<Dialog.Footer
+				><Dialog.Cancel disabled={removing}>保留</Dialog.Cancel><Dialog.Action
+					disabled={removing}
+					onclick={(event) => {
+						event.preventDefault();
+						void remove();
+					}}>{removing ? '正在删除…' : '确认删除'}</Dialog.Action
+				></Dialog.Footer
+			>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<RenameDialog.Root
+		open={editing !== null}
+		onOpenChange={(open) => {
+			if (!open && !saving) editing = null;
+		}}
+	>
+		<RenameDialog.Content
+			showCloseButton={false}
+			onOpenAutoFocus={(event) => {
 				event.preventDefault();
-				if (editing) void rename(editing);
+				document.getElementById('conversation-title')?.focus();
 			}}
 		>
-			<Field.Field>
-				<Field.Label for="conversation-title">会话标题</Field.Label>
-				<Input
-					id="conversation-title"
-					bind:value={draftTitle}
-					maxlength={100}
-					required
-					disabled={saving}
-				/>
-			</Field.Field>
-			{#if editError}<p role="alert" class="text-xs text-destructive">{editError}</p>{/if}
-			<RenameDialog.Footer>
-				<Button variant="ghost" disabled={saving} onclick={() => (editing = null)}>取消</Button>
-				<Button type="submit" disabled={saving || !draftTitle.trim()}
-					>{saving ? '保存中…' : '保存'}</Button
-				>
-			</RenameDialog.Footer>
-		</form>
-	</RenameDialog.Content>
-</RenameDialog.Root>
+			<RenameDialog.Header>
+				<RenameDialog.Title>重命名</RenameDialog.Title>
+				<RenameDialog.Description>为这段旅行设置一个标题。</RenameDialog.Description>
+			</RenameDialog.Header>
+			<form
+				class="flex flex-col gap-4"
+				onsubmit={(event) => {
+					event.preventDefault();
+					if (editing) void rename(editing);
+				}}
+			>
+				<Field.Field>
+					<Field.Label for="conversation-title">会话标题</Field.Label>
+					<Input
+						id="conversation-title"
+						bind:value={draftTitle}
+						maxlength={100}
+						required
+						disabled={saving}
+					/>
+				</Field.Field>
+				{#if editError}<p role="alert" class="text-xs text-destructive">{editError}</p>{/if}
+				<RenameDialog.Footer>
+					<Button variant="ghost" disabled={saving} onclick={() => (editing = null)}>取消</Button>
+					<Button type="submit" disabled={saving || !draftTitle.trim()}
+						>{saving ? '保存中…' : '保存'}</Button
+					>
+				</RenameDialog.Footer>
+			</form>
+		</RenameDialog.Content>
+	</RenameDialog.Root>
+{/if}

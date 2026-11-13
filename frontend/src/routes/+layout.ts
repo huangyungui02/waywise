@@ -1,12 +1,14 @@
 import { listConversations } from '#lib/chat/cache.js';
-import { ApiError } from '#lib/api.js';
-import { error } from '@sveltejs/kit';
+import { ApiError, currentUserId } from '#lib/api.js';
+import { error, redirect } from '@sveltejs/kit';
 import type { LayoutLoad } from './$types';
 
 export const ssr = false;
 export const prerender = false;
-export const load: LayoutLoad = async ({ depends, fetch }) => {
+export const load: LayoutLoad = async ({ depends, fetch, url }) => {
 	depends('app:conversations');
+	if (url.pathname === '/login') return { conversations: [] };
+	if (!(await currentUserId())) redirect(307, '/login');
 	try {
 		return { conversations: await listConversations(fetch) };
 	} catch (cause) {

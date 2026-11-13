@@ -21,7 +21,7 @@ services:
     env_file:
       - .env
     environment:
-      ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在 .env 设置 JWT_SECRET_KEY}
       DATABASE_URL: postgresql://waywise:waywise@postgres:5432/waywise
       DBOS_DATABASE_URL: postgresql://waywise:waywise@postgres:5432/waywise
     restart: unless-stopped
@@ -37,7 +37,7 @@ services:
         max-file: "3"
 
   caddy:
-    image: caddy:2-alpine
+    build: ./frontend
     ports:
       - "80:80"
       - "443:443"

@@ -247,10 +247,12 @@ async def test_legacy_interrupted_conversation_can_continue(
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
     settings = Settings(database_url=pg_database(tmp_path / "legacy.db"))
-    store = (
-        await store_factory(settings.database_url.get_secret_value())
-    ).conversations
-    created = await store.create()
+    from auth_helpers import ensure_user
+
+    travel = await store_factory(settings.database_url.get_secret_value())
+    store = travel.conversations
+    user_id = await ensure_user(travel)
+    created = await store.create(user_id=user_id)
     conversation = await store.load(created.id)
     await store.save_messages(
         conversation, [ModelRequest(parts=[UserPromptPart("旧的旅行需求")])], "running"

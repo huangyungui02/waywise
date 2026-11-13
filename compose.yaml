@@ -25,7 +25,7 @@ services:
     env_file:
       - .env
     environment:
-      ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在 .env 设置 JWT_SECRET_KEY}
       DATABASE_URL: postgresql://waywise:waywise@postgres:5432/waywise
       DBOS_DATABASE_URL: postgresql://waywise:waywise@postgres:5432/waywise
     command: ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "7932", "--reload", "--reload-dir", "/app/app"]
@@ -46,7 +46,6 @@ services:
     environment:
       API_PROXY_TARGET: http://travel-agent:7932
       VITE_API_BASE_URL: ""
-      VITE_ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 设置 ACCESS_TOKEN}
     volumes:
       - ./frontend:/app
       - frontend-modules:/app/node_modules

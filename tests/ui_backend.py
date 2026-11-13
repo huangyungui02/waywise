@@ -236,7 +236,9 @@ def create_app():
     agent.model.function = title
     settings = Settings(
         _env_file=None,
-        access_token="offline-access-token",
+        jwt_secret_key="offline-signing-key-for-tests-only-32",
+        initial_username="offline",
+        initial_password="offline-test-password",
         DASHSCOPE_API_KEY="test-key",
         AMAP_MAPS_API_KEY="test-map-key",
         database_url=pg_database(Path(os.environ["UI_TEST_DATABASE"])),

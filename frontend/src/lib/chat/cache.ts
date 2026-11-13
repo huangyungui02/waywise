@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import { api, type Conversation, type Detail } from '#lib/api.js';
+import { api, ApiError, currentUserId, type Conversation, type Detail } from '#lib/api.js';
 
 interface CachedConversation {
 	id: string;
@@ -21,8 +21,10 @@ async function access<T>(
 ): Promise<T | undefined> {
 	let db: IDBDatabase | undefined;
 	try {
+		const userId = await currentUserId();
+		if (!userId) return undefined;
 		db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = indexedDB.open('travel-agent', 1);
+			const request = indexedDB.open(`travel-agent-${userId}`, 1);
 			request.onupgradeneeded = () =>
 				request.result.createObjectStore('conversations', { keyPath: 'id' });
 			request.onsuccess = () => resolve(request.result);
@@ -73,6 +75,7 @@ export async function listConversations(request: typeof fetch = fetch): Promise<
 	try {
 		return await api<Conversation[]>('/conversations', undefined, request);
 	} catch (error) {
+		if (error instanceof ApiError && error.status === 401) throw error;
 		const cached = await access<CachedConversation[]>('readonly', (store) => store.getAll());
 		if (!cached?.length) throw error;
 		return cached

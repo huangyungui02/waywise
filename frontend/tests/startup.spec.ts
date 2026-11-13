@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test('首次启动无法连接后端时显示可读错误', async ({ page }) => {
 	await page.route('**/api/conversations', (route) => route.abort());

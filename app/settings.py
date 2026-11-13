@@ -5,6 +5,8 @@ from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.models.auth import Password, Username
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -13,9 +15,12 @@ class Settings(BaseSettings):
         env_file=ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
-    access_token: SecretStr = Field(min_length=1)
+    initial_username: Username
+    initial_password: Password
+    jwt_secret_key: SecretStr = Field(min_length=32)
     database_url: SecretStr = Field(min_length=1)
     dbos_database_url: SecretStr | None = None
     dbos_retention_days: int = Field(default=7, ge=1)

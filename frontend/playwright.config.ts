@@ -7,8 +7,7 @@ export default defineConfig({
 	workers: 1,
 	use: {
 		baseURL: 'http://127.0.0.1:5179',
-		browserName: 'chromium',
-		extraHTTPHeaders: { Authorization: 'Bearer offline-access-token' }
+		browserName: 'chromium'
 	},
 	webServer: [
 		{
@@ -22,8 +21,7 @@ export default defineConfig({
 			command: 'pnpm dev --host 127.0.0.1 --port 5179',
 			env: {
 				API_PROXY_TARGET: 'http://127.0.0.1:17933',
-				VITE_API_BASE_URL: '',
-				VITE_ACCESS_TOKEN: 'offline-access-token'
+				VITE_API_BASE_URL: ''
 			},
 			url: 'http://127.0.0.1:5179'
 		}

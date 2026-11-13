@@ -1,6 +1,6 @@
 # 知途 · Waywise
 
-知途（Waywise）是一个个人使用的 iOS 国内旅行助手，帮你查询火车票、机票、大巴商品和酒店，提供购买链接，并安排每日游览路线和预算。
+知途（Waywise）是一个支持网页和个人 iOS App 的国内旅行助手，帮你查询火车票、机票、大巴商品和酒店，提供购买链接，并安排每日游览路线和预算。
 
 先聊清楚需求，再选定交通和住宿；你确认方案后，助手再安排具体行程。已经订好的车票和酒店也可以直接告诉它。
 
@@ -8,19 +8,21 @@
 
 ## 配置
 
-复制配置文件，填写百炼 API Key、高德 **Web 服务** Key 和个人访问令牌：
+复制配置文件，填写初始账号、百炼 API Key、高德 **Web 服务** Key 和 JWT 签名密钥：
 
 ```bash
 cp .env.example .env
 openssl rand -hex 32
 ```
 
-将生成的随机值填入 `.env` 的 `ACCESS_TOKEN`。这个令牌供你自己的 App 和开发网页调用后端，不能提交到 Git；模型及其他服务密钥只保存在后端。
+将生成的随机值填入 `.env` 的 `JWT_SECRET_KEY`。这个密钥只保存在后端，不能提交到 Git 或编入 App；模型及其他服务密钥只保存在后端。
 
 | 配置项 | 是否必填 | 说明 |
 | --- | --- | --- |
-| `ACCESS_TOKEN` | 是 | 个人 API 访问令牌，不能为空 |
-| `DATABASE_URL` | 直接运行 Python 必填 | PostgreSQL 连接 URL；Compose 自动设置 |
+| `INITIAL_USERNAME` | 是 | 初始用户名，支持字母、数字、下划线、点和连字符，统一转小写 |
+| `INITIAL_PASSWORD` | 是 | 初始密码，8 至 128 个字符；只用于创建，不覆盖已有用户密码 |
+| `JWT_SECRET_KEY` | 是 | JWT 签名密钥，至少 32 个字符 |
+| `DATABASE_URL` | Compose 自动设置 | PostgreSQL 连接 URL；无需手动配置 |
 | `DBOS_DATABASE_URL` | 否 | 默认与业务数据库共用，DBOS 使用独立 schema |
 | `DASHSCOPE_API_KEY` | 是 | [百炼 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) |
 | `AMAP_MAPS_API_KEY` | 是 | [高德开放平台](https://console.amap.com/)的 Web 服务 Key |
@@ -38,15 +40,17 @@ docker compose up --build
 ```
 
 打开 **http://127.0.0.1:5173**。本地 Compose 启动 Vite 前端和 FastAPI 后端，支持前后端代码热更新。
-Vite 将 `/api` 代理到后端，并使用根目录 `.env` 的 `ACCESS_TOKEN`；无需再配置前端令牌。
+Vite 将 `/api` 代理到后端；前端通过用户名和密码登录，不包含服务端密钥。
 后端 API 在 `http://127.0.0.1:7932`，不挂载网页；`/docs` 可通过 Authorize 输入令牌调试。
 首次启动需要下载镜像及依赖，修改依赖后需重新构建或重启对应服务。
+
+启动时会自动创建 `.env` 中 `INITIAL_USERNAME` 和 `INITIAL_PASSWORD` 配置的账号，直接使用该账号登录即可。已有同名账号时保留原密码；页面改密后，重启不会重置密码。暂不提供公开注册。
 
 停止本地服务使用 `docker compose down`。本地项目名为 `travel-agent-dev`，数据库与生产数据卷分开。
 
 ## Docker 生产部署
 
-生产配置独立使用，包含后端、PostgreSQL 和 Caddy，不构建或部署前端。服务器安装 Docker 和 Compose，配置 `.env`，
+生产配置独立使用，包含前端、后端、PostgreSQL 和 Caddy；前端在镜像构建阶段生成静态文件，由 Caddy 托管。服务器安装 Docker 和 Compose，配置 `.env`，
 将 `DOMAIN` 改成真实域名并解析到服务器，允许公网 TCP 80、443 访问，然后运行：
 
 ```bash
@@ -56,8 +60,9 @@ docker compose -f compose.prod.yml logs -f
 ```
 
 Caddy 自动申请和续期证书，证书状态保存在持久卷中。后端 7932 不向宿主机发布。
-访问 `https://你的域名/api/health` 检查服务，根路径返回 404；其他业务 API 需要 `Authorization: Bearer <ACCESS_TOKEN>`。
-iOS App 使用相同令牌访问 HTTPS 后端，不提供注册和登录，也不隔离多个用户的数据。
+打开 `https://你的域名`，使用创建的账号登录。前端与 `/api` 共用域名，无需额外配置前端 API 地址或网页 CORS。
+访问 `https://你的域名/api/health` 检查服务；业务 API 需要 `Authorization: Bearer <access_token>`，令牌通过 `/api/auth/login` 获取。
+iOS App 使用账号密码登录，聊天和行程按用户隔离。
 
 两份 Compose **不要叠加使用**。生产项目名为 `travel-agent`，与原默认部署的数据卷命名保持一致；旧数据不会自动进入本地开发卷。
 生产容器配置了退出重启和日志轮转，仍需自行监控磁盘并定期备份。
@@ -75,7 +80,7 @@ docker compose -f compose.prod.yml down
 
 业务数据与 DBOS 执行记录保存在 PostgreSQL 的 `waywise` 数据库，分别使用 `public` 和 `dbos` schema；持久卷为 `postgres-data`。
 Compose 内置数据库的用户名、密码和数据库名均为 `waywise`，仅供内部网络访问，无需配置数据库密码或连接地址。
-直接运行 Python 时需设置 `DATABASE_URL`；可用 `DBOS_DATABASE_URL` 将执行记录放到独立 PostgreSQL 数据库。
+本地开发也由 Compose 启动 PostgreSQL；宿主机数据库工具可连接 `127.0.0.1:5432`。独立部署后端时，可用 `DBOS_DATABASE_URL` 将执行记录放到独立 PostgreSQL 数据库。
 首次启动会直接建表，不迁移原有数据。
 DBOS 默认同时执行 4 个会话；已结束的执行记录保留 7 天并每小时清理，使用 `DBOS_RETENTION_DAYS` 调整。聊天历史和安排不受清理影响。
 
@@ -93,22 +98,11 @@ docker compose -f compose.prod.yml exec -T postgres pg_restore -U waywise -d way
 docker compose -f compose.prod.yml start travel-agent
 ```
 
-导入已有本地数据库前，先备份原数据，启动一次生产服务创建容器和卷，再停止后端：
-
-```bash
-docker compose -f compose.prod.yml stop travel-agent
-docker compose -f compose.prod.yml cp ./data/. travel-agent:/app/data/
-docker compose -f compose.prod.yml run --rm --no-deps --user root travel-agent chown -R traveler:traveler /app/data
-docker compose -f compose.prod.yml start travel-agent
-```
-
-复制期间两端服务均应停止，必须一起复制两个数据库。
-
 ## iOS 个人客户端
 
 前端静态页面通过 Capacitor 打包进 iOS App，只在个人设备安装，不做分发。
-后端地址和访问令牌在构建时写入 App；令牌可从安装包提取，轮换后需要重新构建并安装。
-构建配置和 Xcode 使用方式见 [iOS 使用说明](docs/ios.md)。浏览器界面仅用于本地开发调试。
+只有后端地址在构建时写入 App；登录后 access token 保存在内存，refresh token 保存在 iOS Keychain。
+构建配置和 Xcode 使用方式见 [iOS 使用说明](docs/ios.md)。也可以直接使用生产网页，两个客户端连接同一个后端。
 
 ## 可观测性（Logfire）
 
@@ -165,36 +159,26 @@ PostgreSQL 负责保存聊天和已确认行程，Logfire 不替代业务存储�
 - 当前部署使用单节点、单后端进程和 PostgreSQL。DBOS 默认同时执行 4 个会话，可通过 `MAX_CONCURRENT_RUNS` 调整，超出后排队。同一版本服务重启后会恢复未完成的工作流；已完成的模型和工具步骤不重跑，中断中的步骤可能重新执行并产生额外调用费用。
 - 未完成模型请求的部分输出会在恢复时被替换为重试结果。DBOS 不保证外部接口恰好调用一次；本项目不执行代下单与支付。
 - 更新代码会改变 DBOS 应用版本；部署新版本前请等待当前回复完成。PostgreSQL 数据卷必须持久化；当前仍按单后端进程部署。
-- 使用个人 Bearer 令牌保护 API，无账户系统和多用户数据隔离；App 仅供个人安装使用。
+- 使用账号密码登录与 PyJWT 签发的 JWT；access token 15 分钟、登录会话最长 30 天，刷新时轮换 refresh token。退出立即撤销当前会话，改密撤销全部会话。暂不提供公开注册、密码找回和设备管理。
+- 网页 refresh token 存在 localStorage，iOS App 使用 Keychain；access token 仅存在内存。当前浏览器请使用单个标签页，尚未实现跨标签页刷新协调。
 - Capacitor iOS 客户端支持个人后端连接，真机交互及发布需自行配置和验证，见 [iOS 使用说明](docs/ios.md)。
 
 ## 参与开发
 
-会话执行、恢复及缓存机制见 [会话恢复说明](docs/chat-recovery.md)。
+账号与令牌设计见 [账号说明](docs/auth.md)。会话执行、恢复及缓存机制见 [会话恢复说明](docs/chat-recovery.md)。
 
 项目基于 [PydanticAI](https://pydantic.dev/docs/ai/llms.txt)，接入高德地图与[飞猪 Skill](https://github.com/alibaba-flyai/flyai-skill)。
 开发前请阅读 [AGENTS.md](AGENTS.md)，飞猪上游文件来源见 [skills/UPSTREAM.md](skills/UPSTREAM.md)。
 
-本地开发需要 Python 3.12+、uv、Node.js 22.18+ 和 pnpm 10。安装依赖并配置 `.env`：
+本地开发统一使用上面的 `docker compose up --build`，一次启动 PostgreSQL、后端和 Vite 前端，支持代码热更新；无需分别启动前后端，也无需在宿主机安装飞猪 CLI。查看日志可运行 `docker compose logs -f`，后端 API 文档位于 `http://127.0.0.1:7932/docs`。
+
+如需在宿主机执行检查或离线测试，另行安装 Python 3.12+、uv、Node.js 22.18+ 和 pnpm 10，再安装测试依赖：
 
 ```bash
 uv sync
-npm install -g @fly-ai/flyai-cli@1.0.16
 corepack enable
 pnpm --dir frontend install --frozen-lockfile
 ```
-
-复制 `frontend/.env.example` 到 `frontend/.env.local`，将 `VITE_ACCESS_TOKEN` 设置为根目录 `.env` 的 `ACCESS_TOKEN`，本地 `VITE_API_BASE_URL` 留空。然后分别在两个终端启动后端和前端：
-
-```bash
-uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 7932
-pnpm --dir frontend dev
-```
-
-打开 Vite 打印的地址（通常为 `http://127.0.0.1:5173`）。
-API 文档位于 `http://127.0.0.1:7932/docs`。
-本地开发需先准备 PostgreSQL，并在 `.env` 中设置 `DATABASE_URL`。
-FastAPI 只提供 API；网页由 Vite 提供，静态构建结果只用于 iOS 打包。
 
 运行离线测试（需本地 PostgreSQL，测试角色具有 CREATE DATABASE 权限）。可在另一终端启动临时测试库：
 

@@ -9,17 +9,19 @@ from starlette.testclient import TestClient
 
 @pytest.fixture(autouse=True)
 def authenticated_clients(monkeypatch):
-    monkeypatch.setenv("ACCESS_TOKEN", "offline-access-token")
-    initialize = TestClient.__init__
+    from auth_helpers import TEST_PASSWORD, authenticate
 
-    def authenticated_init(self, *args, **kwargs):
-        kwargs["headers"] = {
-            "Authorization": "Bearer offline-access-token",
-            **kwargs.pop("headers", {}),
-        }
-        initialize(self, *args, **kwargs)
+    monkeypatch.setenv("JWT_SECRET_KEY", "offline-signing-key-for-tests-only-32")
+    monkeypatch.setenv("INITIAL_USERNAME", "offline")
+    monkeypatch.setenv("INITIAL_PASSWORD", TEST_PASSWORD)
+    enter = TestClient.__enter__
 
-    monkeypatch.setattr(TestClient, "__init__", authenticated_init)
+    def authenticated_enter(self):
+        result = enter(self)
+        authenticate(self)
+        return result
+
+    monkeypatch.setattr(TestClient, "__enter__", authenticated_enter)
 
 
 @pytest.fixture(autouse=True)

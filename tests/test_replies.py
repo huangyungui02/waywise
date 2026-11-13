@@ -30,7 +30,7 @@ def disconnect(client, backend, cid, started):
         async with httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=backend),
             base_url="http://test",
-            headers={"Authorization": "Bearer offline-access-token"},
+            headers=dict(client.headers),
         ) as browser:
 
             async def send():

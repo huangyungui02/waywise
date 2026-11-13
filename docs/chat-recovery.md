@@ -17,7 +17,7 @@ Agent 只依赖事件记录接口；工作流依赖持久流；HTTP 响应订阅
 
 ## 访问与部署
 
-FastAPI 只提供 API，本地 Compose 启动 Vite 与后端；独立的 `compose.prod.yml` 只启动后端与 Caddy。后端启动必须配置 `ACCESS_TOKEN`，普通 API 和官方 AI SDK 的发送、恢复、停止请求均携带 Bearer 令牌。客户端使用本地配置中的 `VITE_ACCESS_TOKEN`，构建时写入个人 iOS App，不提供账户系统。CORS 预检和健康检查不需要令牌，鉴权在进入业务处理和提交 DBOS 工作流前完成。
+FastAPI 只提供 API，本地 Compose 启动 Vite 与后端；独立的 `compose.prod.yml` 启动后端、PostgreSQL 与托管静态前端的 Caddy。后端启动必须配置 `JWT_SECRET_KEY`，客户端通过账号密码取得 PyJWT 签发的 JWT 令牌对。普通 API 和官方 AI SDK 的发送、恢复、停止请求统一携带 access token，认证失败时合并刷新并重试一次；refresh token 在 iOS 使用 Keychain 保存。CORS 预检和健康检查不需要令牌，鉴权与用户归属检查在进入业务处理和提交 DBOS 工作流前完成。
 
 ## 工作流
 

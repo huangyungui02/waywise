@@ -57,6 +57,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/svelte": "^4.0.326",
+		"@aparajita/capacitor-secure-storage": "^8.0.1",
 		"@capacitor/core": "^8.6.0",
 		"@capacitor/ios": "^8.6.0",
 		"ai": "^6.0.326",

@@ -9,12 +9,14 @@ from dbos import DBOS
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_ai import Agent
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import create_agent
+from app.auth import Authentication, create_initial_user
 from app.chat.retention import clean_workflow_history
 from app.chat.workflows import Replies
 from app.db.travel import TravelStore
-from app.routes import chat, conversations
+from app.routes import auth, chat, conversations
 from app.settings import Settings
 
 
@@ -37,6 +39,12 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(api: FastAPI):
         async with store:
+            async with AsyncSession(store.engine) as session, session.begin():
+                await create_initial_user(
+                    session,
+                    settings.initial_username,
+                    settings.initial_password.get_secret_value(),
+                )
             DBOS.launch()
             await asyncio.to_thread(
                 DBOS.apply_schedules,
@@ -63,6 +71,7 @@ def create_app() -> FastAPI:
 
     api = FastAPI(title="知途 · Waywise", lifespan=lifespan)
     api.state.settings = settings
+    api.state.auth = Authentication(settings)
     api.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -96,6 +105,7 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    api.include_router(auth.router)
     api.include_router(conversations.router)
     api.include_router(chat.router)
 

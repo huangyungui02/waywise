@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+node_modules
+.svelte-kit
+build
+ios
+tests
+playwright-report
+test-results
+.pnpm-store
+.DS_Store
+.output
+.vercel
+.netlify
+.wrangler

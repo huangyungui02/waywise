@@ -137,9 +137,15 @@ class ConversationStore(BaseConversationStore):
                 raise ConversationConflict(conversation_id)
             await session.commit()
 
-    async def create(self) -> ConversationRow:
+    async def create(self, *, user_id: str | None = None) -> ConversationRow:
         conversation = Conversation()
         await self.save(conversation)
+        async with AsyncSession(self.engine) as session, session.begin():
+            await session.execute(
+                update(ConversationRow)
+                .where(ConversationRow.id == conversation.conversation_id)
+                .values(user_id=user_id)
+            )
         return await self.get(conversation.conversation_id)
 
     async def get(self, conversation_id: str) -> ConversationRow:
@@ -149,13 +155,13 @@ class ConversationStore(BaseConversationStore):
                 raise LookupError(conversation_id)
             return row
 
-    async def list(self) -> list[ConversationRow]:
+    async def list(self, *, user_id: str | None = None) -> list[ConversationRow]:
         async with AsyncSession(self.engine) as session:
             return list(
                 await session.scalars(
-                    select(ConversationRow).order_by(
-                        ConversationRow.updated_at.desc(), ConversationRow.id
-                    )
+                    select(ConversationRow)
+                    .where(ConversationRow.user_id == user_id)
+                    .order_by(ConversationRow.updated_at.desc(), ConversationRow.id)
                 )
             )
 

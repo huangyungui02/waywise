@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Index, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -43,6 +43,7 @@ class ConversationRow(Base):
     __tablename__ = "conversation_records"
 
     id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
     scope: Mapped[str | None]
     revision: Mapped[str]
     record_data: Mapped[dict] = mapped_column(JSONB)
@@ -62,3 +63,23 @@ class ConversationEntryRow(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     parent_id: Mapped[str | None] = mapped_column(index=True)
     message_data: Mapped[dict] = mapped_column(JSONB)
+
+
+class UserRecord(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=lambda: str(uuid4()))
+    username: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str]
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSessionRecord(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    refresh_token_hash: Mapped[str]
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

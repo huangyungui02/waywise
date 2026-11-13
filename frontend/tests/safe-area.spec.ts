@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 for (const top of [0, 62]) {
 	test(`手机顶部安全区 ${top}px：表单和旅行列表避开标题与状态栏`, async ({ page }) => {

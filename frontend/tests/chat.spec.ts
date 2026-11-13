@@ -1,5 +1,5 @@
 import type { Detail } from '../src/lib/api';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures';
 
 function dateName(date: string) {
 	const [year, month, day] = date.split('-').map(Number);
@@ -648,7 +648,10 @@ for (const stopped of [false, true]) {
 async function cachedConversation(page: Page, id: string) {
 	return page.evaluate(async (id) => {
 		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = indexedDB.open('travel-agent', 1);
+			const request = indexedDB.open(
+				`travel-agent-${JSON.parse(localStorage.getItem('waywise.auth')!).userId}`,
+				1
+			);
 			request.onsuccess = () => resolve(request.result);
 			request.onerror = () => reject(request.error);
 		});
@@ -718,7 +721,10 @@ for (const mode of ['清空 IndexedDB', 'IndexedDB 不可用', 'IndexedDB 写入
 		if (mode === '清空 IndexedDB') {
 			// reload 的新文档在路由加载前清空缓存，覆盖无预览的完整服务端恢复路径。
 			await page.addInitScript(() => {
-				const request = indexedDB.open('travel-agent', 1);
+				const request = indexedDB.open(
+					`travel-agent-${JSON.parse(localStorage.getItem('waywise.auth')!).userId}`,
+					1
+				);
 				request.onsuccess = () => {
 					const db = request.result;
 					const transaction = db.transaction('conversations', 'readwrite');
@@ -776,7 +782,10 @@ test('旧运行缓存只作为预览，同步后以新运行完整进度为准�
 	await page.goto('/');
 	await page.evaluate(async (old) => {
 		const db = await new Promise<IDBDatabase>((resolve) => {
-			const request = indexedDB.open('travel-agent', 1);
+			const request = indexedDB.open(
+				`travel-agent-${JSON.parse(localStorage.getItem('waywise.auth')!).userId}`,
+				1
+			);
 			request.onsuccess = () => resolve(request.result);
 		});
 		await new Promise<void>((resolve) => {
@@ -1346,6 +1355,8 @@ test('客户端主动携带令牌完成发送、恢复和停止', async ({ page,
 	expect(requests.some(({ path }) => path.endsWith('/chat/stop'))).toBe(true);
 	expect(requests.length).toBeGreaterThan(4);
 	expect(
-		requests.every(({ authorization }) => authorization === 'Bearer offline-access-token')
+		requests.every(({ authorization }) =>
+			/^Bearer eyJ[^.]+\.[^.]+\.[^.]+$/.test(authorization ?? '')
+		)
 	).toBe(true);
 });

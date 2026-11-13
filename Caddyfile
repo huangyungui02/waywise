@@ -1,3 +1,17 @@
 {$DOMAIN} {
-	reverse_proxy travel-agent:7932
+	encode zstd gzip
+
+	@backend path /api /api/* /docs /docs/* /redoc /openapi.json
+	handle @backend {
+		reverse_proxy travel-agent:7932
+	}
+
+	handle {
+		root * /srv
+		route {
+			try_files {path} /index.html
+			header /index.html Cache-Control "no-cache"
+			file_server
+		}
+	}
 }

@@ -68,7 +68,9 @@ def query() -> str:
 
 settings = Settings(
     _env_file=None,
-    access_token="offline-access-token",
+    jwt_secret_key="offline-signing-key-for-tests-only-32",
+    initial_username="offline",
+    initial_password="offline-test-password",
     DASHSCOPE_API_KEY="test",
     AMAP_MAPS_API_KEY="test",
     database_url=pg_database(folder / "travel.db"),
@@ -80,9 +82,10 @@ with (
 ):
     backend = create_app()
 
-with TestClient(
-    backend, headers={"Authorization": "Bearer offline-access-token"}
-) as client:
+with TestClient(backend) as client:
+    from auth_helpers import authenticate
+
+    authenticate(client)
     if not (folder / "cid").exists():
         from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage
 

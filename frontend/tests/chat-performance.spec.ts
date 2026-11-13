@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部', async ({ page }) => {
 	const paragraph = '交通、住宿和景点安排需要结合实际班次进行核实。'.repeat(8);
@@ -89,7 +89,7 @@ test('长会话恢复保留完整预览，上滑阅读不被重放拉回底部',
 	await page.goto('/');
 	await page.evaluate(async (detail) => {
 		const db = await new Promise<IDBDatabase>((resolve) => {
-			const request = indexedDB.open('travel-agent', 1);
+			const request = indexedDB.open(`travel-agent-${JSON.parse(localStorage.getItem('waywise.auth')!).userId}`, 1);
 			request.onupgradeneeded = () =>
 				request.result.createObjectStore('conversations', { keyPath: 'id' });
 			request.onsuccess = () => resolve(request.result);

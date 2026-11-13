@@ -8,19 +8,19 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
 
 from app.chat.workflows import Replies
 from app.db.conversations import ConversationStore
-from app.db.tables import ConversationRow
+from app.db.tables import ConversationRow, UserRecord
 from app.db.travel import TravelStore
 from app.dependencies import (
     get_conversations,
+    get_current_user,
     get_replies,
     get_store,
-    require_access_token,
     require_conversation,
 )
 from app.models.arrangements import TravelArrangements
 
 router = APIRouter(
-    prefix="/api/conversations", dependencies=[Depends(require_access_token)]
+    prefix="/api/conversations", dependencies=[Depends(get_current_user)]
 )
 
 
@@ -43,10 +43,11 @@ class ConversationTitle(BaseModel):
 
 @router.get("", response_model=list[ConversationSummary])
 async def list_conversations(
+    user: UserRecord = Depends(get_current_user),
     conversations: ConversationStore = Depends(get_conversations),
     replies: Replies = Depends(get_replies),
 ):
-    records = await conversations.list()
+    records = await conversations.list(user_id=user.id)
     for record in records:
         record.outcome = await replies.outcome(record.id, record.outcome)
     return records
@@ -54,9 +55,10 @@ async def list_conversations(
 
 @router.post("", status_code=201, response_model=ConversationSummary)
 async def new_conversation(
+    user: UserRecord = Depends(get_current_user),
     conversations: ConversationStore = Depends(get_conversations),
 ):
-    return await conversations.create()
+    return await conversations.create(user_id=user.id)
 
 
 @router.patch(
